@@ -11,17 +11,19 @@ game_sessions = {}
 def start_game():
     data = request.get_json()
 
+    number_of_players = data.get('number_of_players')
     mode = data.get('mode')
     player1 = data.get('player1')
     player2 = data.get('player2', None)
 
-    if not player1 or not mode:
+
+    if not player1 or not number_of_players:
         return jsonify({
             "status": "error",
             "message": "Missing required information"
         }), 400
 
-    if mode == "2-player" and not player2:
+    if number_of_players == "2-player" and not player2:
         return jsonify({
             "status": "error",
             "message": "2-player mode requires a second player"
@@ -32,12 +34,14 @@ def start_game():
 
     # Store game data
     game_sessions[game_id] = {
+        "number_of_players": number_of_players,
         "mode": mode,
         "player1": player1,
         "player2": player2,
         "board": None,
         "moves": [],
-        "winner": None
+        "winner": None,
+        "loser": None
     }
 
     return jsonify({
