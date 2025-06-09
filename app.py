@@ -1,20 +1,21 @@
 # app.py
-# This file contains the Flask web application.
-
+# This file contains the merged Flask web application.
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # To allow frontend requests
+from flask_cors import CORS
 import uuid
 
-# Import the game logic
-from game import Game, Game
+# Import the core game logic from game.py
+from game import Game
 
 # Initialize Flask App
 app = Flask(__name__)
-CORS(app)  # This allows requests from any origin. For production, you might want to restrict this.
+CORS(app)  # This allows requests from any origin.
 
-# In-memory storage for games.
-# For a real application, you would use a database (e.g., Redis, PostgreSQL).
+# In-memory storage for game sessions.
+# This dictionary will hold the game logic object and player metadata.
+# e.g., games['some-uuid'] = {'game_logic': Game(...), 'player1_name': 'Alice'}
 games = {}
+
 
 @app.route("/")
 def index():
@@ -25,34 +26,63 @@ def index():
 @app.route("/game", methods=["POST"])
 def create_game():
     """
-    Creates a new game session.
-    Request body (JSON): {"mode": "vs_bot" or "vs_player"}
+    Creates a new game session, combining logic from both versions.
+    Request body (JSON): {
+        "mode": "vs_bot" or "vs_player",
+        "player1_name": "Alice",
+        "player2_name": "Bob" (optional)
+    }
     """
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    # --- Merged Logic ---
+    # Get player names and mode from the request body
     mode = data.get("mode", "vs_bot")
+    player1_name = data.get("player1_name")
+    player2_name = data.get("player2_name")  # Will be None if not provided
+
+    # Validate input
+    if not player1_name:
+        return jsonify({"error": "player1_name is a required field"}), 400
+    if mode == "vs_player" and not player2_name:
+        return jsonify({"error": "Two-player mode requires player2_name"}), 400
     if mode not in ["vs_bot", "vs_player"]:
         return jsonify({"error": "Invalid game mode"}), 400
 
+    # --- Core Game Logic ---
+    # Create a unique ID and a new Game instance
     game_id = str(uuid.uuid4())
-    games[game_id] = Game(mode=mode)
+    game_instance = Game(mode=mode)
+
+    # Store both the game logic and the new metadata
+    games[game_id] = {
+        "game_logic": game_instance,
+        "player1_name": player1_name,
+        "player2_name": player2_name,
+    }
 
     return jsonify({
         "message": "Game created successfully!",
         "game_id": game_id,
         "player_1_id": Game.PLAYER_1,
         "player_2_id": Game.PLAYER_2,
+        "player1_name": player1_name,
+        "player2_name": player2_name,
         "mode": mode
     }), 201
 
 
 @app.route("/game/<game_id>", methods=["GET"])
-def get_game_state():
+def get_game_state(game_id):
     """
     Gets the state of a specific game for a specific player.
+    This is the more powerful endpoint from your original version.
     Query params: ?player_id=0
     """
-    game = games.get(game_id)
-    if not game:
+    session = games.get(game_id)
+    if not session:
         return jsonify({"error": "Game not found"}), 404
 
     player_id = request.args.get('player_id')
@@ -66,24 +96,25 @@ def get_game_state():
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid player_id"}), 400
 
-    return jsonify(game.get_state(player_id))
+    # Get the state from the game_logic object
+    game_state = session['game_logic'].get_state(player_id)
+
+    # Add the player names to the response
+    game_state['player1_name'] = session['player1_name']
+    game_state['player2_name'] = session['player2_name']
+
+    return jsonify(game_state)
 
 
 @app.route("/game/<game_id>/place", methods=["POST"])
 def place_ship(game_id):
     """
     Places a ship for a player.
-    Request body (JSON): {
-        "player_id": 0,
-        "ship_size": 5,
-        "row": 0,
-        "col": 0,
-        "orientation": "horizontal"
-    }
     """
-    game = games.get(game_id)
-    if not game:
+    session = games.get(game_id)
+    if not session:
         return jsonify({"error": "Game not found"}), 404
+    game = session['game_logic']  # Get the actual game object
 
     data = request.get_json()
     try:
@@ -95,14 +126,12 @@ def place_ship(game_id):
     except KeyError:
         return jsonify({"error": "Missing required fields in request body"}), 400
 
-    # Ensure the requested ship size is valid for this game
     if ship_size not in Game.SHIP_SIZES:
-         return jsonify({"error": f"Invalid ship size. Valid sizes are: {Game.SHIP_SIZES}"}), 400
+        return jsonify({"error": f"Invalid ship size. Valid sizes are: {Game.SHIP_SIZES}"}), 400
 
-    # Ensure the ship has not already been placed
     placed_ship_sizes = [len(s['coords']) for s in game.players[player_id]['board'].ships]
     if placed_ship_sizes.count(ship_size) >= Game.SHIP_SIZES.count(ship_size):
-         return jsonify({"error": f"All ships of size {ship_size} have already been placed."}), 400
+        return jsonify({"error": f"All ships of size {ship_size} have already been placed."}), 400
 
     success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
 
@@ -116,11 +145,11 @@ def place_ship(game_id):
 def attack(game_id):
     """
     Performs an attack.
-    Request body (JSON): { "player_id": 0, "row": 1, "col": 1 }
     """
-    game = games.get(game_id)
-    if not game:
+    session = games.get(game_id)
+    if not session:
         return jsonify({"error": "Game not found"}), 404
+    game = session['game_logic']  # Get the actual game object
 
     data = request.get_json()
     try:
@@ -141,12 +170,8 @@ def attack(game_id):
         "game_state": game.get_state(player_id)
     })
 
-# To run this application:
-# 1. Save the code above as app.py
-# 2. Save the first code block as game.py in the same directory.
-# 3. Install Flask: pip install Flask Flask-Cors
-#    (If you get a permission error, try: pip install --user Flask Flask-Cors)
-# 4. Run from your terminal: flask --app app run
+
+# Main entry point to run the application
 if __name__ == "__main__":
-    # This allows running the file directly with `python app.py`
-    app.run(debug=True, port=5001)g
+    app.run(debug=True, port=5001)
+
