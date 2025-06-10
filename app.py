@@ -2,6 +2,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
+import string
+import secrets
 
 # Import the core game logic from game.py
 from game import Game
@@ -33,7 +35,8 @@ def create_game():
     if mode not in ["vs_bot", "vs_player"]:
         return jsonify({"error": "Invalid game mode"}), 400
 
-    game_id = str(uuid.uuid4())
+    alphabet = string.ascii_uppercase + string.digits
+    game_id = ''.join(secrets.choice(alphabet) for i in range(6))
     game_instance = Game(mode=mode)
 
     games[game_id] = {
