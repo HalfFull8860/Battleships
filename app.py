@@ -88,36 +88,36 @@ def get_game_state(game_id):
 
     return jsonify(game_state)
 
-@app.route("/game/<game_id>/place", methods=["POST"])
-def place_ship(game_id):
-    session = games.get(game_id)
-    if not session:
-        return jsonify({"error": "Game not found"}), 404
-    game = session['game_logic']
+# @app.route("/game/<game_id>/place", methods=["POST"])
+# def place_ship(game_id):
+#     session = games.get(game_id)
+#     if not session:
+#         return jsonify({"error": "Game not found"}), 404
+#     game = session['game_logic']
 
-    data = request.get_json()
-    try:
-        player_id = data['player_id']
-        ship_size = data['ship_size']
-        row = data['row']
-        col = data['col']
-        orientation = data['orientation']
-    except KeyError:
-        return jsonify({"error": "Missing required fields in request body"}), 400
+#     data = request.get_json()
+#     try:
+#         player_id = data['player_id']
+#         ship_size = data['ship_size']
+#         row = data['row']
+#         col = data['col']
+#         orientation = data['orientation']
+#     except KeyError:
+#         return jsonify({"error": "Missing required fields in request body"}), 400
     
-    try:
-        player_id = int(player_id)
-        if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
-            raise ValueError
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid player_id"}), 400
+#     try:
+#         player_id = int(player_id)
+#         if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
+#             raise ValueError
+#     except (ValueError, TypeError):
+#         return jsonify({"error": "Invalid player_id"}), 400
 
-    success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
+#     success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
 
-    if not success:
-        return jsonify({"error": message}), 400
+#     if not success:
+#         return jsonify({"error": message}), 400
 
-    return jsonify({"message": message, "game_state": game.get_state(player_id)})
+#     return jsonify({"message": message, "game_state": game.get_state(player_id)})
 
 @app.route("/game/<game_id>/attack", methods=["POST"])
 def attack(game_id):
