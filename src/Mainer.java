@@ -10,6 +10,12 @@ public class Mainer {
     // main function
     public static void main(String[] args)
     {
+        // Workaround to wait for local flask app to start
+        try {
+            Thread.sleep(1000);
+        } catch (Exception e) {
+        }
+        
 
         String ip = "127.0.0.1:5000";
         String path = "/";
