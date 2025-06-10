@@ -17,4 +17,4 @@ You can run the game locally by launching it from the terminal.
 1. Start by cloning the master branch of this repository, `git clone https://github.com/HalfFull8860`
 2. Enter the newly created local repository, `cd HalfFull8860`
 3. If you don't have pymake installed, run `python -m pip install pymake`
-4. Run `python -m pymake`. This will install the missing packaged, compile the java files, start the flask app and the desktop application.
+4. Run `python -m pymake`. This will install the missing packages, compile the java files, start the flask app and the desktop application.
