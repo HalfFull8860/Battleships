@@ -2,6 +2,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
+import string
+import secrets
 
 # Import the core game logic from game.py
 from game import Game
@@ -33,7 +35,8 @@ def create_game():
     if mode not in ["vs_bot", "vs_player"]:
         return jsonify({"error": "Invalid game mode"}), 400
 
-    game_id = str(uuid.uuid4())
+    alphabet = string.ascii_uppercase + string.digits
+    game_id = ''.join(secrets.choice(alphabet) for i in range(6))
     game_instance = Game(mode=mode)
 
     games[game_id] = {
@@ -85,36 +88,36 @@ def get_game_state(game_id):
 
     return jsonify(game_state)
 
-@app.route("/game/<game_id>/place", methods=["POST"])
-def place_ship(game_id):
-    session = games.get(game_id)
-    if not session:
-        return jsonify({"error": "Game not found"}), 404
-    game = session['game_logic']
+# @app.route("/game/<game_id>/place", methods=["POST"])
+# def place_ship(game_id):
+#     session = games.get(game_id)
+#     if not session:
+#         return jsonify({"error": "Game not found"}), 404
+#     game = session['game_logic']
 
-    data = request.get_json()
-    try:
-        player_id = data['player_id']
-        ship_size = data['ship_size']
-        row = data['row']
-        col = data['col']
-        orientation = data['orientation']
-    except KeyError:
-        return jsonify({"error": "Missing required fields in request body"}), 400
+#     data = request.get_json()
+#     try:
+#         player_id = data['player_id']
+#         ship_size = data['ship_size']
+#         row = data['row']
+#         col = data['col']
+#         orientation = data['orientation']
+#     except KeyError:
+#         return jsonify({"error": "Missing required fields in request body"}), 400
+    
+#     try:
+#         player_id = int(player_id)
+#         if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
+#             raise ValueError
+#     except (ValueError, TypeError):
+#         return jsonify({"error": "Invalid player_id"}), 400
 
-    if ship_size not in Game.SHIP_SIZES:
-        return jsonify({"error": f"Invalid ship size. Valid sizes are: {Game.SHIP_SIZES}"}), 400
+#     success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
 
-    placed_ship_sizes = [len(s['coords']) for s in game.players[player_id]['board'].ships]
-    if placed_ship_sizes.count(ship_size) >= Game.SHIP_SIZES.count(ship_size):
-        return jsonify({"error": f"All ships of size {ship_size} have already been placed."}), 400
+#     if not success:
+#         return jsonify({"error": message}), 400
 
-    success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
-
-    if not success:
-        return jsonify({"error": message}), 400
-
-    return jsonify({"message": message, "game_state": game.get_state(player_id)})
+#     return jsonify({"message": message, "game_state": game.get_state(player_id)})
 
 @app.route("/game/<game_id>/attack", methods=["POST"])
 def attack(game_id):
@@ -130,6 +133,13 @@ def attack(game_id):
         col = data['col']
     except KeyError:
         return jsonify({"error": "Missing required fields in request body"}), 400
+    
+    try:
+        player_id = int(player_id)
+        if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid player_id"}), 400
 
     result = game.attack(player_id, row, col)
 
