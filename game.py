@@ -293,23 +293,41 @@ class Board:
         if not self.ships: return False # No ships placed yet
         return all(len(s['hits']) == len(s['coords']) for s in self.ships)
 
+    # In game.py, inside the Board class
+
     def to_dict(self, reveal_ships=False):
         """
         Converts the board state to a dictionary for JSON serialization.
-        If reveal_ships is False, ship locations are hidden unless they are hit.
+        Implements advanced "fog of war" display logic.
         """
-        display_grid = [['~' for _ in range(self.size)] for _ in range(self.size)]
-        for r in range(self.size):
-            for c in range(self.size):
-                if (r, c) in self.attacks:
-                    if self.grid[r][c] == 'S':
-                        display_grid[r][c] = 'X' # Hit
-                    else:
-                        display_grid[r][c] = 'O' # Miss
-                elif reveal_ships and self.grid[r][c] == 'S':
+        # If it's the opponent's board, start with '?' for unknown cells.
+        if not reveal_ships:
+            display_grid = [['?' for _ in range(self.size)] for _ in range(self.size)]
+        else:
+            # For your own board, start with '~' for water.
+            display_grid = [['~' for _ in range(self.size)] for _ in range(self.size)]
+            # And show your own ships.
+            for ship in self.ships:
+                for r, c in ship['coords']:
                     display_grid[r][c] = 'S'
+    
+        # Handle misses first
+        for r, c in self.attacks:
+            if self.grid[r][c] == '~': # If an attacked cell is water in the master grid
+                # On your own board, this shows as 'O'. On the opponent's, it changes '?' to '~'.
+                display_grid[r][c] = '~' if not reveal_ships else 'O'
+
+        # Handle hits and sunk ships
+        for ship in self.ships:
+            is_sunk = len(ship['hits']) == len(ship['coords'])
+            for r, c in ship['hits']:
+                if is_sunk:
+                    display_grid[r][c] = 'X' # Uppercase 'X' for a fully sunk ship
+                else:
+                    display_grid[r][c] = 'x' # Lowercase 'x' for a partially hit ship
+
         return {
-        'grid': display_grid,
-        'sunk_ships_count': self.sunk_ships_count,
-        'total_ships': len(Game.SHIP_SIZES)
+            'grid': display_grid,
+            'sunk_ships_count': self.sunk_ships_count,
+            'total_ships': len(Game.SHIP_SIZES)
         }
