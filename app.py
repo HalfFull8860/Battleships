@@ -101,13 +101,13 @@ def place_ship(game_id):
         orientation = data['orientation']
     except KeyError:
         return jsonify({"error": "Missing required fields in request body"}), 400
-
-    if ship_size not in Game.SHIP_SIZES:
-        return jsonify({"error": f"Invalid ship size. Valid sizes are: {Game.SHIP_SIZES}"}), 400
-
-    placed_ship_sizes = [len(s['coords']) for s in game.players[player_id]['board'].ships]
-    if placed_ship_sizes.count(ship_size) >= Game.SHIP_SIZES.count(ship_size):
-        return jsonify({"error": f"All ships of size {ship_size} have already been placed."}), 400
+    
+    try:
+        player_id = int(player_id)
+        if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid player_id"}), 400
 
     success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
 
@@ -130,6 +130,13 @@ def attack(game_id):
         col = data['col']
     except KeyError:
         return jsonify({"error": "Missing required fields in request body"}), 400
+    
+    try:
+        player_id = int(player_id)
+        if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid player_id"}), 400
 
     result = game.attack(player_id, row, col)
 
