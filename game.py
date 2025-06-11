@@ -21,6 +21,8 @@ class Game:
             self.PLAYER_1: {'board': Board(self.GRID_SIZE), 'ships_placed': True}, # Note: ships_placed is now True
             self.PLAYER_2: {'board': Board(self.GRID_SIZE), 'ships_placed': True}
         }
+        self.status_message = "All ships placed. Player 1's turn to attack."
+        self.bot_target_list = [] # Add this new list to track targets
         
         #Automatically place ships for both players ---
         self._randomly_place_ships(self.PLAYER_1)
@@ -157,53 +159,75 @@ class Game:
 
     # Replace the existing _bot_attack method with this one.
 
+    # Replace the existing _bot_attack method with this one.
+
     def _bot_attack(self):
-        """The bot makes a random, valid attack."""
+        """
+        The bot makes a "smart" attack.
+        Hunts randomly, then targets adjacent cells after a hit.
+        """
         player_board = self.players[self.PLAYER_1]['board']
         attacked = False
-        bot_attack_result = {}
-        bot_attack_details = {}
+        row, col = -1, -1
 
-        while not attacked:
-            row = random.randint(0, self.GRID_SIZE - 1)
-            col = random.randint(0, self.GRID_SIZE - 1)
+        # --- HUNT / TARGET LOGIC ---
+        # If there are priority targets, enter TARGET mode
+        if self.bot_target_list:
+            # Take the most recent target from the list
+            row, col = self.bot_target_list.pop()
+        # Otherwise, enter HUNT mode
+        else:
+            # Hunt randomly for a cell that has not been attacked yet
+            while not attacked:
+                r = random.randint(0, self.GRID_SIZE - 1)
+                c = random.randint(0, self.GRID_SIZE - 1)
+                if (r, c) not in player_board.attacks:
+                    row, col = r, c
+                    attacked = True
 
-            if (row, col) not in player_board.attacks:
-                result, ship_info = player_board.receive_attack(row, col)
-                attacked = True
-                bot_attack_result = result
-                # Initially populate the details
-                bot_attack_details = {'result': result, 'row': row, 'col': col, 'ship_info': ship_info}
+        # --- EXECUTE ATTACK ---
+        result, ship_info = player_board.receive_attack(row, col)
+        bot_attack_details = {'result': result, 'row': row, 'col': col, 'ship_info': ship_info}
 
-        # --- Bot Message Logic (no changes needed) ---
-        if bot_attack_result == 'miss':
-            self.last_event_messages[self.PLAYER_1] = "The bot fired and missed."
-            self.last_event_messages[self.PLAYER_2] = "You missed."
-        elif bot_attack_result == 'hit':
-            self.last_event_messages[self.PLAYER_1] = "The bot hit your ship!"
-            self.last_event_messages[self.PLAYER_2] = "You hit an enemy ship!"
-        elif bot_attack_result == 'sunk':
-            ship_name = self.SHIP_NAMES.get(bot_attack_details['ship_info']['size'], "ship")
+        # --- UPDATE STATE BASED ON RESULT ---
+        # If a ship is SUNK, clear the target list and go back to HUNTING
+        if result == 'sunk':
+            self.bot_target_list = []
+            ship_name = self.SHIP_NAMES.get(ship_info['size'], "ship")
             self.last_event_messages[self.PLAYER_1] = f"The bot sunk your {ship_name}!"
             self.last_event_messages[self.PLAYER_2] = f"You sunk their {ship_name}!"
+    
+        # If it's a HIT, add adjacent cells to the target list
+        elif result == 'hit':
+            self.last_event_messages[self.PLAYER_1] = "The bot hit your ship!"
+            self.last_event_messages[self.PLAYER_2] = "You hit an enemy ship!"
+            # Add valid neighbors (up, down, left, right) to the target list
+            for r_offset, c_offset in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                next_r, next_c = row + r_offset, col + c_offset
+                # Check if the cell is on the board and not already attacked
+                if (0 <= next_r < self.GRID_SIZE and
+                    0 <= next_c < self.GRID_SIZE and
+                    (next_r, next_c) not in player_board.attacks):
+                    self.bot_target_list.append((next_r, next_c))
+
+        # If it's a MISS
+        else:
+            self.last_event_messages[self.PLAYER_1] = "The bot fired and missed."
+            self.last_event_messages[self.PLAYER_2] = "You missed."
 
         # --- Bot Win Condition ---
         if player_board.all_ships_sunk():
             self.game_over = True
             self.winner = self.PLAYER_2
             self.status_message = "Game Over! Bot wins!"
-            self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
-        
-            # FIX: Update the details dictionary with the game_over status
-            # so this information is correctly passed back to app.py
             bot_attack_details['game_over'] = self.game_over
             bot_attack_details['winner'] = self.winner
         else:
-            # Switch turn back to the player
             self.current_turn = self.PLAYER_1
             self.status_message = f"Player {self.current_turn + 1}'s turn."
 
-        return bot_attack_result, bot_attack_details
+        # We return bot_attack_result for the old logic, but bot_attack_details is what's used
+        return result, bot_attack_details
 
     def get_state(self, player):
         """
@@ -243,6 +267,7 @@ class Game:
         self.game_over = False
         self.winner = None
         self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
+        self.bot_target_list = [] # Also reset the target list for a new round
     
         # FIX: Randomly place ships for BOTH players to prepare for the next round.
         # This ensures the "random placement for all" rule is consistent.
