@@ -1,9 +1,12 @@
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.HashSet;
+import java.util.Set;
 
 public class Game extends JFrame {
     private static final int BOARD_SIZE = 10;
@@ -155,6 +158,7 @@ public class Game extends JFrame {
                 buttons[row][col] = new JButton();
                 buttons[row][col].setPreferredSize(new Dimension(35, 35));
                 buttons[row][col].setBackground(Color.CYAN);
+                buttons[row][col].setFont(new Font("Arial", Font.BOLD, 12));
                 
                 final int r = row;
                 final int c = col;
@@ -462,6 +466,48 @@ public class Game extends JFrame {
         orientationButton.setText(isHorizontal ? "Horizontal" : "Vertical");
     }
     
+    // New method to check if a ship is completely destroyed
+    private boolean isShipDestroyed(int[][] board, int[][] attacks, int row, int col) {
+        if (board[row][col] != 1) return false; // No ship here
+        
+        Set<String> shipCells = new HashSet<>();
+        Set<String> visited = new HashSet<>();
+        
+        // Find all cells belonging to this ship using flood fill
+        findShipCells(board, row, col, shipCells, visited);
+        
+        // Check if all ship cells have been hit
+        for (String cell : shipCells) {
+            String[] coords = cell.split(",");
+            int r = Integer.parseInt(coords[0]);
+            int c = Integer.parseInt(coords[1]);
+            if (attacks[r][c] != 2) { // Not hit
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // Helper method for flood fill to find all cells of a ship
+    private void findShipCells(int[][] board, int row, int col, Set<String> shipCells, Set<String> visited) {
+        String cell = row + "," + col;
+        
+        if (visited.contains(cell) || row < 0 || row >= BOARD_SIZE || 
+            col < 0 || col >= BOARD_SIZE || board[row][col] != 1) {
+            return;
+        }
+        
+        visited.add(cell);
+        shipCells.add(cell);
+        
+        // Check adjacent cells (up, down, left, right)
+        findShipCells(board, row - 1, col, shipCells, visited);
+        findShipCells(board, row + 1, col, shipCells, visited);
+        findShipCells(board, row, col - 1, shipCells, visited);
+        findShipCells(board, row, col + 1, shipCells, visited);
+    }
+    
     private void updateBoardDisplay(boolean isPlayer1Board) {
         JButton[][] buttons = isPlayer1Board ? board1Buttons : board2Buttons;
         int[][] board = isPlayer1Board ? player1Board : player2Board;
@@ -470,30 +516,52 @@ public class Game extends JFrame {
         for (int i = 0; i < BOARD_SIZE; i++) {
             for (int j = 0; j < BOARD_SIZE; j++) {
                 Color cellColor = Color.CYAN; // Default water color
+                String buttonText = "";
                 
                 if (isPlacementPhase) {
                     if (board[i][j] == 1) {
-                        cellColor = Color.GRAY; // Ship
+                        cellColor = Color.WHITE; // Ship
                     }
                 } else {
                     if (isPlayer1Board) {
                         // Own board - show ships and damage
                         if (board[i][j] == 1) {
-                            cellColor = (attacks[i][j] == 2) ? Color.RED : Color.GRAY;
+                            if (attacks[i][j] == 2) {
+                                // Check if ship is completely destroyed
+                                if (isShipDestroyed(board, attacks, i, j)) {
+                                    cellColor = Color.RED;
+                                    buttonText = "XX"; // Destroyed ship
+                                } else {
+                                    cellColor = Color.ORANGE; // Hit but not destroyed
+                                    buttonText = "X";
+                                }
+                            } else {
+                                cellColor = Color.WHITE; // Undamaged ship
+                            }
                         } else if (attacks[i][j] == 3) {
                             cellColor = Color.BLUE; // Miss
+                            buttonText = "•";
                         }
                     } else {
                         // Enemy board - only show hits and misses
                         if (attacks[i][j] == 2) {
-                            cellColor = Color.RED; // Hit
+                            // Check if ship is completely destroyed
+                            if (isShipDestroyed(board, attacks, i, j)) {
+                                cellColor = Color.RED;
+                                buttonText = "XX"; // Destroyed ship
+                            } else {
+                                cellColor = Color.ORANGE; // Hit but not destroyed
+                                buttonText = "X";
+                            }
                         } else if (attacks[i][j] == 3) {
                             cellColor = Color.BLUE; // Miss
+                            buttonText = "•";
                         }
                     }
                 }
                 
                 buttons[i][j].setBackground(cellColor);
+                buttons[i][j].setText(buttonText);
             }
         }
     }
