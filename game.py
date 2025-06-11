@@ -93,6 +93,8 @@ class Game:
 
     # game.py -> Replace the whole attack() method
 
+# Replace the entire attack method in game.py with this version.
+
     def attack(self, player, row, col):
         """Processes an attack from one player to another."""
         if self.game_over:
@@ -112,8 +114,8 @@ class Game:
 
         if result == 'already_attacked':
             return {'error': 'This cell has already been attacked.'}
-        
-        # --- NEW MESSAGE LOGIC ---
+    
+        # --- Message Logic (no changes here) ---
         if result == 'miss':
             self.last_event_messages[player] = "You missed."
             self.last_event_messages[opponent] = "The opponent fired and missed."
@@ -124,26 +126,36 @@ class Game:
             ship_name = self.SHIP_NAMES.get(ship_info['size'], "ship")
             self.last_event_messages[player] = f"You sunk their {ship_name}!"
             self.last_event_messages[opponent] = f"Your {ship_name} has been sunk!"
-        # --- END OF NEW MESSAGE LOGIC ---
 
-        # Check for win condition
+        # --- Win Condition and Return Logic ---
         if opponent_board.all_ships_sunk():
             self.game_over = True
             self.winner = player
             self.status_message = f"Game Over! Player {player + 1} wins!"
-            # Clear event messages on game over, as the status_message takes precedence
             self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
+        
+            # FIX: Return a dictionary that explicitly includes the game_over status.
+            return {
+                'player_attack': result,
+                'ship_info': ship_info,
+                'game_over': self.game_over,
+                'winner': self.winner
+            }
         else:
-            # Switch turns
+            # --- Turn Switching Logic (no changes here) ---
             self.current_turn = opponent
             self.status_message = f"Player {self.current_turn + 1}'s turn."
 
-            # If vs_bot mode and it's now the bot's turn
             if self.mode == 'vs_bot' and self.current_turn == self.PLAYER_2:
                 bot_result, bot_attack_details = self._bot_attack()
+                # If the bot makes a winning move, return that game_over status
+                if bot_attack_details.get('game_over'):
+                    return bot_attack_details
                 return {'player_attack': result, 'ship_info': ship_info, 'bot_attack_info': bot_attack_details}
 
         return {'player_attack': result, 'ship_info': ship_info}
+
+    # Replace the existing _bot_attack method with this one.
 
     def _bot_attack(self):
         """The bot makes a random, valid attack."""
@@ -160,9 +172,10 @@ class Game:
                 result, ship_info = player_board.receive_attack(row, col)
                 attacked = True
                 bot_attack_result = result
+                # Initially populate the details
                 bot_attack_details = {'result': result, 'row': row, 'col': col, 'ship_info': ship_info}
 
-        # --- NEW BOT MESSAGE LOGIC ---
+        # --- Bot Message Logic (no changes needed) ---
         if bot_attack_result == 'miss':
             self.last_event_messages[self.PLAYER_1] = "The bot fired and missed."
             self.last_event_messages[self.PLAYER_2] = "You missed."
@@ -173,14 +186,18 @@ class Game:
             ship_name = self.SHIP_NAMES.get(bot_attack_details['ship_info']['size'], "ship")
             self.last_event_messages[self.PLAYER_1] = f"The bot sunk your {ship_name}!"
             self.last_event_messages[self.PLAYER_2] = f"You sunk their {ship_name}!"
-        # --- END OF NEW BOT MESSAGE LOGIC ---
 
-        # Check for bot win condition
+        # --- Bot Win Condition ---
         if player_board.all_ships_sunk():
             self.game_over = True
             self.winner = self.PLAYER_2
             self.status_message = "Game Over! Bot wins!"
             self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
+        
+            # FIX: Update the details dictionary with the game_over status
+            # so this information is correctly passed back to app.py
+            bot_attack_details['game_over'] = self.game_over
+            bot_attack_details['winner'] = self.winner
         else:
             # Switch turn back to the player
             self.current_turn = self.PLAYER_1
@@ -216,7 +233,6 @@ class Game:
             'mode': self.mode
         }
 
-    # Add this method to the Game class in game.py
     def reset_game(self):
         """Resets the game for the next round in a match."""
         self.players = {
@@ -227,11 +243,16 @@ class Game:
         self.game_over = False
         self.winner = None
         self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
-        self.status_message = "Player 1, place your ships for the next round."
-        if self.mode == 'vs_bot':
-            self._place_bot_ships()
-            self.players[self.PLAYER_2]['ships_placed'] = True
-            self.status_message = "Player 1, place your ships to begin the next round."
+    
+        # FIX: Randomly place ships for BOTH players to prepare for the next round.
+        # This ensures the "random placement for all" rule is consistent.
+        self._randomly_place_ships(self.PLAYER_1)
+        self.players[self.PLAYER_1]['ships_placed'] = True
+    
+        self._randomly_place_ships(self.PLAYER_2)
+        self.players[self.PLAYER_2]['ships_placed'] = True
+
+        self.status_message = "New round started! All ships have been placed. Player 1's turn."
 
 
 class Board:
@@ -243,31 +264,44 @@ class Board:
         self.attacks = set() # Stores (row, col) tuples of attacks
         self.sunk_ships_count = 0
 
+    # Replace the existing place_ship method with this one.
+
     def place_ship(self, size, row, col, orientation):
-        """Places a ship on the board if the location is valid."""
+        """
+        Places a ship on the board if the location is valid and not adjacent
+        to any other ships.
+        """
         coords = []
         if orientation == 'horizontal':
             if col + size > self.size:
-                return False # Out of bounds
+                return False  # Out of bounds
             coords = [(row, c) for c in range(col, col + size)]
         elif orientation == 'vertical':
             if row + size > self.size:
-                return False # Out of bounds
+                return False  # Out of bounds
             coords = [(r, col) for r in range(row, row + size)]
         else:
-            return False # Invalid orientation
+            return False  # Invalid orientation
 
-        # Check for collisions with other ships
+        # NEW: Validate that the ship and its surrounding area are free
         for r, c in coords:
-            if self.grid[r][c] == 'S': # 'S' for ship
-                return False
+            # Iterate through a 3x3 bounding box around each ship coordinate
+            for i in range(r - 1, r + 2):
+                for j in range(c - 1, c + 2):
+                    # Check if the neighboring cell is within the grid bounds
+                    if 0 <= i < self.size and 0 <= j < self.size:
+                        # If any cell in the bounding box already has a ship, placement is invalid
+                        if self.grid[i][j] == 'S':
+                            return False
 
-        # Place the ship
+        # If all checks pass, place the ship
         ship = {'coords': coords, 'hits': set()}
         self.ships.append(ship)
         for r, c in coords:
             self.grid[r][c] = 'S'
         return True
+
+    # Replace the existing receive_attack method with this one.
 
     def receive_attack(self, row, col):
         """Records an attack and returns the result (hit, miss, or sunk)."""
@@ -283,6 +317,19 @@ class Board:
                 # Check if the ship is now sunk
                 if len(ship['hits']) == len(ship['coords']):
                     self.sunk_ships_count += 1
+                    
+                    # NEW: Reveal surrounding cells when a ship is sunk
+                    # Iterate through each coordinate of the newly sunk ship
+                    for r_ship, c_ship in ship['coords']:
+                        # Iterate through the 3x3 bounding box around it
+                        for i in range(r_ship - 1, r_ship + 2):
+                            for j in range(c_ship - 1, c_ship + 2):
+                                # Check if the cell is within the grid bounds
+                                if 0 <= i < self.size and 0 <= j < self.size:
+                                    # Add the surrounding water cells to the set of attacks
+                                    # The existing to_dict() method will handle displaying them
+                                    self.attacks.add((i, j))
+                    
                     return 'sunk', {'size': len(ship['coords']), 'coords': ship['coords']}
                 return 'hit', None
 
