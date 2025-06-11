@@ -121,6 +121,8 @@ def get_game_state(game_id):
 
 # The corrected attack function in app.py
 
+# Replace the attack function in app.py with this final version.
+
 @app.route("/game/<game_id>/attack", methods=["POST"])
 def attack(game_id):
     session = games.get(game_id)
@@ -148,7 +150,6 @@ def attack(game_id):
     if "error" in result:
         return jsonify(result), 400
 
-    # This logic correctly checks for a win and triggers a reset.
     if result.get("game_over"):
         winner = result.get("winner")
         if winner is not None:
@@ -156,14 +157,20 @@ def attack(game_id):
             if session['wins'][winner] >= session['number_of_games']:
                 session['match_winner'] = winner
             else:
-                game.reset_game()  # This will now correctly reset for BOTH players.
+                game.reset_game()
 
-    # FIX: Simplify the response. The front-end team only needs to look
-    # inside 'game_state' for all state information, including wins.
+    # FIX: Get the final game state and enrich it with session data
+    # to ensure the response is always complete.
+    final_game_state = game.get_state(player_id)
+    final_game_state['player1_name'] = session['player1_name']
+    final_game_state['player2_name'] = session['player2_name']
+    final_game_state['wins'] = session['wins']
+    final_game_state['match_winner'] = session['match_winner']
+
     return jsonify({
         "message": "Attack successful!",
         "attack_result": result,
-        "game_state": game.get_state(player_id)
+        "game_state": final_game_state
     })
 
 if __name__ == "__main__":

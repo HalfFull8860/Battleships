@@ -18,12 +18,12 @@ class Game:
         """Initializes a new game with all ships randomly placed."""
         self.mode = mode
         self.players = {
-            self.PLAYER_1: {'board': Board(self.GRID_SIZE), 'ships_placed': True}, # Note: ships_placed is now True
+            self.PLAYER_1: {'board': Board(self.GRID_SIZE), 'ships_placed': True},
             self.PLAYER_2: {'board': Board(self.GRID_SIZE), 'ships_placed': True}
         }
-        self.status_message = "All ships placed. Player 1's turn to attack."
-        self.bot_target_list = [] # Add this new list to track targets
-        
+        # self.status_message = "All ships placed. Player 1's turn to attack." # This line is redundant
+        self.bot_target_list = []
+    
         #Automatically place ships for both players ---
         self._randomly_place_ships(self.PLAYER_1)
         self._randomly_place_ships(self.PLAYER_2)
