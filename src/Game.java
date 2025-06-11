@@ -28,6 +28,9 @@ public class Game extends JFrame {
     // Player information
     private String player1Name = "Player 1";
     private String player2Name = "Player 2";
+
+    // GameId
+    private String gameId = "";
     
     // Game boards
     private final int[][] player1Board = new int[BOARD_SIZE][BOARD_SIZE];
@@ -196,6 +199,9 @@ public class Game extends JFrame {
         
         // Get player names
         getPlayerNames();
+
+        String[] gameInfo = BattleshipConnector.createGame("vs_bot", player1Name, player2Name, 1);
+        gameId = gameInfo[0];
         
         // Start ship placement
         startShipPlacement();
