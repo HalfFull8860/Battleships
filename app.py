@@ -1,167 +1,164 @@
 # app.py
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+# This is the final, fully merged application.
+# It handles database storage, match play, and different placement modes.
+
+import os
 import uuid
 import string
 import secrets
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
-# Import the core game logic from game.py
 from game import Game
+import database
 
-app = Flask(__name__)
-CORS(app)
 
-games = {}  # In-memory session storage
-
-@app.route("/")
-def index():
-    return "<h1>Battleship API is running!</h1>"
-
-@app.route("/game", methods=["POST"])
-def create_game():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Request body must be JSON"}), 400
-
-    mode = data.get("mode", "vs_bot")
-    number_of_games = data.get("number_of_games", 1)
-    player1_name = data.get("player1_name")
-    player2_name = data.get("player2_name")
-
-    if not player1_name:
-        return jsonify({"error": "player1_name is a required field"}), 400
-    if mode == "vs_player" and not player2_name:
-        return jsonify({"error": "Two-player mode requires player2_name"}), 400
-    if mode not in ["vs_bot", "vs_player"]:
-        return jsonify({"error": "Invalid game mode"}), 400
-
-    alphabet = string.ascii_uppercase + string.digits
-    game_id = ''.join(secrets.choice(alphabet) for i in range(6))
-    game_instance = Game(mode=mode)
-
-    games[game_id] = {
-        "game_logic": game_instance,
-        "player1_name": player1_name,
-        "player2_name": player2_name,
-        "mode": mode,
-        "number_of_games": number_of_games,
-        "wins": {
-            Game.PLAYER_1: 0,
-            Game.PLAYER_2: 0
-        },
-        "match_winner": None
-    }
-
-    return jsonify({
-        "message": "Game created successfully!",
-        "game_id": game_id,
-        "player_1_id": Game.PLAYER_1,
-        "player_2_id": Game.PLAYER_2,
-        "player1_name": player1_name,
-        "player2_name": player2_name,
-        "mode": mode,
-        "number_of_games": number_of_games
-    }), 201
-
-@app.route("/game/<game_id>", methods=["GET"])
-def get_game_state(game_id):
-    session = games.get(game_id)
-    if not session:
-        return jsonify({"error": "Game not found"}), 404
-
-    player_id = request.args.get('player_id')
-    if player_id is None:
-        return jsonify({"error": "player_id query parameter is required"}), 400
+def create_app(test_config=None):
+    app = Flask(__name__, instance_relative_config=True)
+    app.config.from_mapping(
+        SECRET_KEY='dev',
+        DATABASE=os.path.join(app.instance_path, 'battleship.sqlite'),
+        JSONIFY_PRETTYPRINT_REGULAR=True  # Makes Postman output readable
+    )
+    CORS(app)
 
     try:
-        player_id = int(player_id)
-        if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
-            raise ValueError
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid player_id"}), 400
+        os.makedirs(app.instance_path)
+    except OSError:
+        pass
 
-    game_state = session['game_logic'].get_state(player_id)
-    game_state['player1_name'] = session['player1_name']
-    game_state['player2_name'] = session['player2_name']
-    game_state['wins'] = session['wins']
-    game_state['match_winner'] = session['match_winner']
+    database.init_app(app)
 
-    return jsonify(game_state)
+    # --- API ENDPOINTS ---
 
-# @app.route("/game/<game_id>/place", methods=["POST"])
-# def place_ship(game_id):
-#     session = games.get(game_id)
-#     if not session:
-#         return jsonify({"error": "Game not found"}), 404
-#     game = session['game_logic']
+    @app.route("/")
+    def index():
+        return "<h1>Battleship API is running! (Merged)</h1>"
 
-#     data = request.get_json()
-#     try:
-#         player_id = data['player_id']
-#         ship_size = data['ship_size']
-#         row = data['row']
-#         col = data['col']
-#         orientation = data['orientation']
-#     except KeyError:
-#         return jsonify({"error": "Missing required fields in request body"}), 400
-    
-#     try:
-#         player_id = int(player_id)
-#         if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
-#             raise ValueError
-#     except (ValueError, TypeError):
-#         return jsonify({"error": "Invalid player_id"}), 400
+    @app.route("/game", methods=["POST"])
+    def create_game_endpoint():
+        data = request.get_json()
+        if not data: return jsonify({"error": "Request body must be JSON"}), 400
 
-#     success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
+        # Get all options for game creation
+        mode = data.get("mode", "vs_bot")
+        placement = data.get("placement", "random")
+        number_of_games = data.get("number_of_games", 1)
+        player1_name = data.get("player1_name", "Player 1")
+        player2_name = data.get("player2_name", "The Bot" if mode == 'vs_bot' else "Player 2")
 
-#     if not success:
-#         return jsonify({"error": message}), 400
+        if mode == "vs_player" and player1_name == player2_name:
+            return jsonify({"error": "Player names must be unique"}), 400
 
-#     return jsonify({"message": message, "game_state": game.get_state(player_id)})
+        # Create a new game instance and session data
+        game_id = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(6))
+        game_instance = Game(mode=mode, placement=placement)
 
-@app.route("/game/<game_id>/attack", methods=["POST"])
-def attack(game_id):
-    session = games.get(game_id)
-    if not session:
-        return jsonify({"error": "Game not found"}), 404
-    game = session['game_logic']
+        session_data = {
+            "game_logic": game_instance,
+            "player1_name": player1_name,
+            "player2_name": player2_name,
+            "number_of_games": number_of_games,
+            "wins": {Game.PLAYER_1: 0, Game.PLAYER_2: 0}
+        }
 
-    data = request.get_json()
-    try:
-        player_id = data['player_id']
-        row = data['row']
-        col = data['col']
-    except KeyError:
-        return jsonify({"error": "Missing required fields in request body"}), 400
-    
-    try:
-        player_id = int(player_id)
-        if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
-            raise ValueError
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid player_id"}), 400
+        # Save the new game session to the database
+        database.save_game(game_id, session_data)
 
-    result = game.attack(player_id, row, col)
+        # --- THIS IS THE UPDATED RESPONSE ---
+        return jsonify({
+            "message": "Game created successfully!",
+            "game_id": game_id,
+            "mode": mode,
+            "number_of_games": number_of_games,
+            "player1_name": player1_name,
+            "player2_name": player2_name,
+            "player_1_id": Game.PLAYER_1,
+            "player_2_id": Game.PLAYER_2
+        }), 201
 
-    if "error" in result:
-        return jsonify(result), 400
+    @app.route("/game/<game_id>", methods=["GET"])
+    def get_game_state_endpoint(game_id):
+        player_id = request.args.get('player_id', type=int)
+        if player_id is None or player_id not in [0, 1]:
+            return jsonify({"error": "A valid player_id (0 or 1) is required"}), 400
 
-    if result.get("game_over"):
-        winner = result.get("winner")
-        if winner is not None:
-            session['wins'][winner] += 1
-            if session['wins'][winner] == session['number_of_games']:
-                session['match_winner'] = winner
-            else:
-                game.reset_game()  # reset for the next round
+        session = database.load_game_session(game_id)
+        if not session: return jsonify({"error": "Game not found"}), 404
 
-    return jsonify({
-        "message": "Attack successful!",
-        "attack_result": result,
-        "game_state": game.get_state(player_id),
-        "wins": session['wins'],
-        "match_winner": session['match_winner']
-    })
+        # Get state from the game logic and add session data to it
+        game_state = session['game_logic'].get_state(player_id)
+        game_state['player1_name'] = session['player1_name']
+        game_state['player2_name'] = session['player2_name']
+        game_state['wins'] = session['wins']
+
+        # Check for a match winner
+        for p_id, score in session['wins'].items():
+            if score >= session['number_of_games']:
+                game_state['match_winner'] = p_id
+                break
+
+        return jsonify(game_state)
+
+    @app.route("/game/<game_id>/place", methods=["POST"])
+    def place_ship_endpoint(game_id):
+        session = database.load_game_session(game_id)
+        if not session: return jsonify({"error": "Game not found"}), 404
+        game = session['game_logic']
+
+        data = request.get_json()
+        player_id = data.get('player_id')
+
+        success, message = game.place_player_ship(
+            player_id, data['ship_size'], data['row'], data['col'], data['orientation']
+        )
+        if not success: return jsonify({"error": message}), 400
+
+        # Save the updated game state back to the database
+        database.save_game(game_id, session)
+        return jsonify({"message": message, "game_state": game.get_state(player_id)})
+
+    @app.route("/game/<game_id>/attack", methods=["POST"])
+    def attack_endpoint(game_id):
+        session = database.load_game_session(game_id)
+        if not session: return jsonify({"error": "Game not found"}), 404
+        game = session['game_logic']
+
+        data = request.get_json()
+        player_id = data.get('player_id')
+
+        result = game.attack(player_id, data['row'], data['col'])
+        if "error" in result: return jsonify(result), 400
+
+        # Check for a round winner and update score
+        if game.game_over:
+            winner = game.winner
+            if winner is not None:
+                session['wins'][winner] += 1
+
+                # Check if this win ends the whole match
+                if session['wins'][winner] >= session['number_of_games']:
+                    session['match_winner'] = winner
+                    game.status_message = f"MATCH OVER! {session[f'player{winner + 1}_name']} wins the match!"
+                else:
+                    # If match is not over, reset the board for the next round
+                    game.reset_game()
+
+        # Save the updated session data (score and new board state)
+        database.save_game(game_id, session)
+
+        # Get the latest state to return to the user
+        final_state = game.get_state(player_id)
+        final_state.update({
+            'wins': session['wins'],
+            'match_winner': session.get('match_winner')
+        })
+
+        return jsonify(final_state)
+
+    return app
+
 
 if __name__ == "__main__":
+    app = create_app()
     app.run(debug=True, port=5001)
