@@ -3,7 +3,8 @@ import subprocess
 
 commands = [
     "python -m flask run",
-    "java -cp bin Mainer"
+    "javac -cp \".;lib/json-20231013.jar\" -d bin src/*.java",
+    "java -cp \".;lib/json-20231013.jar;bin\" Mainer"
 ]
 
 def run_command(cmd):
