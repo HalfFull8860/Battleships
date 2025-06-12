@@ -63,6 +63,8 @@ def create_game():
         "number_of_games": number_of_games
     }), 201
 
+# In app.py, replace the existing get_game_state function
+
 @app.route("/game/<game_id>", methods=["GET"])
 def get_game_state(game_id):
     session = games.get(game_id)
@@ -80,13 +82,21 @@ def get_game_state(game_id):
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid player_id"}), 400
 
+    # Get the base state from the game logic
     game_state = session['game_logic'].get_state(player_id)
+    
+    # Enrich it with session data
     game_state['player1_name'] = session['player1_name']
     game_state['player2_name'] = session['player2_name']
     game_state['wins'] = session['wins']
     game_state['match_winner'] = session['match_winner']
 
-    return jsonify(game_state)
+    # FIX: Wrap the final game state in a consistent top-level object
+    # to match the structure of the /attack response.
+    return jsonify({
+        "message": "Game state retrieved successfully.",
+        "game_state": game_state
+    })
 
 # @app.route("/game/<game_id>/place", methods=["POST"])
 # def place_ship(game_id):

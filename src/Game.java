@@ -1,663 +1,289 @@
-
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.HashSet;
-import java.util.Set;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+// The front-end team must add the org.json library to their project dependencies
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class Game extends JFrame {
-    private static final int BOARD_SIZE = 10;
-    private static final int GAME_TIME = 120;
-    
-    // Ship configuration
-    private static final int[] SHIP_SIZES = {5, 4, 3, 2};
-    private static final String[] SHIP_NAMES = {"Carrier", "Battleship", "Cruiser", "Destroyer"};
-    
-    // Game state variables
-    private boolean isOnePlayer = true;
-    private boolean isPlacementPhase = true;
-    private boolean isPlayer1Turn = true;
-    private int currentShipIndex = 0;
-    private boolean isHorizontal = true;
-    private int placementPlayer = 1;
-    private int timeLeft = GAME_TIME;
-    
-    // Player information
-    private String player1Name = "Player 1";
-    private String player2Name = "Player 2";
 
-    // GameId
-    private String gameId = "";
-    
-    // Game boards
-    private final int[][] player1Board = new int[BOARD_SIZE][BOARD_SIZE];
-    private final int[][] player2Board = new int[BOARD_SIZE][BOARD_SIZE];
-    private final int[][] player1Attacks = new int[BOARD_SIZE][BOARD_SIZE];
-    private final int[][] player2Attacks = new int[BOARD_SIZE][BOARD_SIZE];
-    
-    // Ships to place
-    private final List<Integer> player1Ships = new ArrayList<>();
-    private final List<Integer> player2Ships = new ArrayList<>();
-    
+    private static final int BOARD_SIZE = 10;
+
     // UI Components
-    private JPanel mainPanel;
     private final JButton[][] board1Buttons = new JButton[BOARD_SIZE][BOARD_SIZE];
     private final JButton[][] board2Buttons = new JButton[BOARD_SIZE][BOARD_SIZE];
     private JLabel statusLabel;
-    private JLabel timerLabel;
     private JLabel player1Label;
     private JLabel player2Label;
-    private JButton orientationButton;
-    private JLabel shipLabel;
-    private javax.swing.Timer gameTimer;
-    
+    private javax.swing.Timer pollingTimer;
+
+    // State variables driven by the backend
+    private String gameId;
+    private int playerId;
+    private boolean isMyTurn;
+    private String player1Name = "Player 1";
+    private String player2Name = "Player 2";
+    private boolean isTwoPlayerMode = false;
+
     public Game() {
-        initializeGame();
         createUserInterface();
+        // The game setup is now the very first thing the user does.
         startGameSetup();
     }
-    
-    private void initializeGame() {
-        // Initialize ship lists
-        for (int size : SHIP_SIZES) {
-            player1Ships.add(size);
-            player2Ships.add(size);
-        }
-        
-        // Setup game timer
-        gameTimer = new javax.swing.Timer(1000, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                timeLeft--;
-                updateTimerDisplay();
-                if (timeLeft <= 0) {
-                    String winner = isPlayer1Turn ? player2Name : player1Name;
-                    endGame("Time's up! " + winner + " wins!");
-                }
-            }
-        });
-    }
-    
+
     private void createUserInterface() {
         setTitle("Battleship Game");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1000, 700);
+        setSize(1200, 600);
         setLocationRelativeTo(null);
-        
-        mainPanel = new JPanel(new BorderLayout());
-        
-        createTopPanel();
-        createGameBoards();
-        
+
+        JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.add(createTopPanel(), BorderLayout.NORTH);
+        mainPanel.add(createGameBoards(), BorderLayout.CENTER);
         add(mainPanel);
     }
-    
-    private void createTopPanel() {
+
+    private JPanel createTopPanel() {
         JPanel topPanel = new JPanel(new BorderLayout());
-        
-        // Status label
-        statusLabel = new JLabel("Welcome to Battleship!", SwingConstants.CENTER);
-        statusLabel.setFont(new Font("Arial", Font.BOLD, 16));
-        
-        // Control panel
-        JPanel controlPanel = new JPanel(new FlowLayout());
-        
-        timerLabel = new JLabel("Time: 2:00");
-        timerLabel.setFont(new Font("Arial", Font.BOLD, 14));
-        
+        statusLabel = new JLabel("Welcome to Battleship! Please Create or Join a Game.", SwingConstants.CENTER);
+        statusLabel.setFont(new Font("Arial", Font.BOLD, 18));
+        topPanel.add(statusLabel, BorderLayout.CENTER);
+
+        JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton newGameButton = new JButton("New Game");
         newGameButton.addActionListener(e -> restartGame());
-        
-        orientationButton = new JButton("Horizontal");
-        orientationButton.addActionListener(e -> toggleShipOrientation());
-        orientationButton.setVisible(false);
-        
-        shipLabel = new JLabel("");
-        shipLabel.setFont(new Font("Arial", Font.BOLD, 12));
-        shipLabel.setVisible(false);
-        
-        controlPanel.add(timerLabel);
         controlPanel.add(newGameButton);
-        controlPanel.add(orientationButton);
-        controlPanel.add(shipLabel);
-        
-        topPanel.add(statusLabel, BorderLayout.CENTER);
         topPanel.add(controlPanel, BorderLayout.EAST);
-        
-        mainPanel.add(topPanel, BorderLayout.NORTH);
+
+        return topPanel;
     }
-    
-    private void createGameBoards() {
+
+    private JPanel createGameBoards() {
         JPanel boardsPanel = new JPanel(new GridLayout(1, 2, 20, 0));
-        
-        // Create Player 1 board
-        JPanel board1Panel = createSingleBoard(board1Buttons, "Player 1's Board", true);
-        player1Label = (JLabel) board1Panel.getComponent(0);
-        
-        // Create Player 2 board
-        JPanel board2Panel = createSingleBoard(board2Buttons, "Player 2's Board", false);
-        player2Label = (JLabel) board2Panel.getComponent(0);
-        
+        boardsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JPanel board1Panel = createSingleBoard(board1Buttons, "Your Board", true);
+        this.player1Label = (JLabel) board1Panel.getComponent(0);
         boardsPanel.add(board1Panel);
+
+        JPanel board2Panel = createSingleBoard(board2Buttons, "Opponent's Board", false);
+        this.player2Label = (JLabel) board2Panel.getComponent(0);
         boardsPanel.add(board2Panel);
-        
-        mainPanel.add(boardsPanel, BorderLayout.CENTER);
+
+        return boardsPanel;
     }
-    
+
     private JPanel createSingleBoard(JButton[][] buttons, String title, boolean isPlayer1Board) {
-        JPanel boardPanel = new JPanel(new BorderLayout());
-        
+        JPanel boardPanel = new JPanel(new BorderLayout(0, 5));
         JLabel titleLabel = new JLabel(title, SwingConstants.CENTER);
-        titleLabel.setFont(new Font("Arial", Font.BOLD, 14));
+        titleLabel.setFont(new Font("Arial", Font.BOLD, 16));
         boardPanel.add(titleLabel, BorderLayout.NORTH);
-        
-        JPanel gridPanel = new JPanel(new GridLayout(BOARD_SIZE, BOARD_SIZE, 1, 1));
-        
+
+        JPanel gridPanel = new JPanel(new GridLayout(BOARD_SIZE, BOARD_SIZE));
+        gridPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
         for (int row = 0; row < BOARD_SIZE; row++) {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 buttons[row][col] = new JButton();
-                buttons[row][col].setPreferredSize(new Dimension(35, 35));
-                buttons[row][col].setBackground(Color.CYAN);
-                buttons[row][col].setFont(new Font("Arial", Font.BOLD, 12));
-                
+                buttons[row][col].setPreferredSize(new Dimension(45, 45));
+                buttons[row][col].setBackground(Color.LIGHT_GRAY);
+                buttons[row][col].setFont(new Font("Arial", Font.BOLD, 16));
+
                 final int r = row;
                 final int c = col;
-                final boolean isP1 = isPlayer1Board;
-                
-                buttons[row][col].addActionListener(e -> handleBoardClick(r, c, isP1));
-                
+                buttons[row][col].addActionListener(e -> handleBoardClick(r, c, isPlayer1Board));
                 gridPanel.add(buttons[row][col]);
             }
         }
-        
         boardPanel.add(gridPanel, BorderLayout.CENTER);
         return boardPanel;
     }
     
+    // NEW: This is the main setup method with Create/Join logic
     private void startGameSetup() {
-        String[] options = {"1 Player (vs AI)", "2 Players"};
-        int choice = JOptionPane.showOptionDialog(
-            this,
-            "Choose game mode:",
-            "Battleship Setup",
-            JOptionPane.YES_NO_OPTION,
-            JOptionPane.QUESTION_MESSAGE,
-            null,
-            options,
-            options[0]
-        );
-        
-        if (choice == -1) { // User closed dialog
-            System.exit(0);
-            return;
-        }
-        
-        isOnePlayer = (choice == 0);
-        
-        // Get player names
-        getPlayerNames();
+        String[] setupOptions = {"Create Game", "Join Game"};
+        int setupChoice = JOptionPane.showOptionDialog(this, "Welcome to Battleship!", "Setup",
+            JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, setupOptions, setupOptions[0]);
 
-        String[] gameInfo = BattleshipConnector.createGame("vs_bot", player1Name, player2Name, 1);
-        gameId = gameInfo[0];
-        
-        // Start ship placement
-        startShipPlacement();
-    }
-    
-    private void getPlayerNames() {
-        player1Name = JOptionPane.showInputDialog(
-            this,
-            "Enter Player 1 name:",
-            "Player Setup",
-            JOptionPane.QUESTION_MESSAGE
-        );
-        
-        if (player1Name == null || player1Name.trim().isEmpty()) {
-            player1Name = "Player 1";
-        }
-        
-        if (isOnePlayer) {
-            player2Name = "AI";
-        } else {
-            player2Name = JOptionPane.showInputDialog(
-                this,
-                "Enter Player 2 name:",
-                "Player Setup",
-                JOptionPane.QUESTION_MESSAGE
-            );
-            
-            if (player2Name == null || player2Name.trim().isEmpty()) {
-                player2Name = "Player 2";
-            }
+        if (setupChoice == -1) System.exit(0);
+
+        if (setupChoice == 0) { // CREATE GAME
+            createGameFlow();
+        } else { // JOIN GAME
+            joinGameFlow();
         }
     }
-    
-    private void startShipPlacement() {
-        isPlacementPhase = true;
-        placementPlayer = 1;
-        currentShipIndex = 0;
+
+    private void createGameFlow() {
+        String[] modeOptions = {"Player vs. Bot", "Player vs. Player"};
+        int modeChoice = JOptionPane.showOptionDialog(this, "Choose your game mode:", "Create Game",
+            JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, modeOptions, modeOptions[0]);
+
+        if (modeChoice == -1) System.exit(0);
+
+        this.isTwoPlayerMode = (modeChoice == 1);
+        String mode = this.isTwoPlayerMode ? "vs_player" : "vs_bot";
         
-        updateBoardLabels();
-        updateStatusMessage();
-        updateShipInformation();
+        Integer[] gameCounts = {1, 3, 5};
+        Integer numGames = (Integer) JOptionPane.showInputDialog(this, "Best of:", "Match Setup",
+            JOptionPane.QUESTION_MESSAGE, null, gameCounts, gameCounts[0]);
+
+        if (numGames == null) System.exit(0);
+
+        getPlayerNames(this.isTwoPlayerMode);
+
+        String[] createResponse = BattleshipConnector.createGame(mode, this.player1Name, this.player2Name, numGames);
         
-        orientationButton.setVisible(true);
-        shipLabel.setVisible(true);
-    }
-    
-    private void handleBoardClick(int row, int col, boolean isPlayer1Board) {
-        if (isPlacementPhase) {
-            handleShipPlacement(row, col, isPlayer1Board);
-        } else {
-            handleAttackMove(row, col, isPlayer1Board);
+        this.gameId = createResponse[0];
+        this.playerId = 0; // Creator is always Player 1
+
+        if (this.gameId.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Error creating game: " + createResponse[1], "API Error", JOptionPane.ERROR_MESSAGE);
+            System.exit(1);
         }
-    }
-    
-    private void handleShipPlacement(int row, int col, boolean isPlayer1Board) {
-        // Only allow placement on current player's board
-        if ((placementPlayer == 1 && !isPlayer1Board) || (placementPlayer == 2 && isPlayer1Board)) {
-            return;
-        }
-        
-        List<Integer> currentPlayerShips = (placementPlayer == 1) ? player1Ships : player2Ships;
-        if (currentPlayerShips.isEmpty()) return;
-        
-        int shipSize = currentPlayerShips.get(currentShipIndex);
-        int[][] currentBoard = (placementPlayer == 1) ? player1Board : player2Board;
-        
-        if (canPlaceShip(currentBoard, row, col, shipSize, isHorizontal)) {
-            placeShip(currentBoard, row, col, shipSize, isHorizontal);
-            currentPlayerShips.remove(currentShipIndex);
-            currentShipIndex = 0;
-            
-            updateBoardDisplay(placementPlayer == 1);
-            
-            if (currentPlayerShips.isEmpty()) {
-                handlePlayerFinishedPlacement();
-            } else {
-                updateShipInformation();
-            }
-        }
-    }
-    
-    private void handlePlayerFinishedPlacement() {
-        if (placementPlayer == 1) {
-            if (isOnePlayer) {
-                placeAIShips();
-                startBattlePhase();
-            } else {
-                placementPlayer = 2;
-                currentShipIndex = 0;
-                updateStatusMessage();
-                updateShipInformation();
-            }
-        } else {
-            startBattlePhase();
-        }
-    }
-    
-    private void handleAttackMove(int row, int col, boolean isPlayer1Board) {
-        // Player 1 attacks Player 2's board, Player 2 attacks Player 1's board
-        boolean isValidTarget = (isPlayer1Turn && !isPlayer1Board) || (!isPlayer1Turn && isPlayer1Board);
-        if (!isValidTarget) return;
-        
-        int[][] targetBoard = isPlayer1Board ? player1Board : player2Board;
-        int[][] attackBoard = isPlayer1Turn ? player1Attacks : player2Attacks;
-        
-        if (attackBoard[row][col] != 0) return; // Already attacked this position
-        
-        boolean isHit = (targetBoard[row][col] == 1);
-        attackBoard[row][col] = isHit ? 2 : 3;
-        
-        String attackerName = isPlayer1Turn ? player1Name : player2Name;
-        statusLabel.setText(attackerName + (isHit ? " HIT!" : " MISSED!"));
-        
-        updateBoardDisplay(!isPlayer1Board);
-        
-        if (checkForWin(attackBoard)) {
-            endGame(attackerName + " wins!");
-            return;
+
+        if(this.isTwoPlayerMode) {
+            JTextArea textArea = new JTextArea("Game created! Share this ID with Player 2:\n" + this.gameId);
+            textArea.setEditable(false);
+            JOptionPane.showMessageDialog(this, textArea, "Game ID", JOptionPane.INFORMATION_MESSAGE);
         }
         
-        switchTurns();
-        
-        if (isOnePlayer && !isPlayer1Turn) {
-            performAIAttack();
-        }
+        refreshGameState();
     }
-    
-    private void performAIAttack() {
-        javax.swing.Timer aiDelay = new javax.swing.Timer(1000, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                executeAIMove();
-                ((javax.swing.Timer)e.getSource()).stop();
-            }
-        });
-        aiDelay.setRepeats(false);
-        aiDelay.start();
-    }
-    
-    private void executeAIMove() {
-        Random random = new Random();
-        int row, col;
-        
-        do {
-            row = random.nextInt(BOARD_SIZE);
-            col = random.nextInt(BOARD_SIZE);
-        } while (player2Attacks[row][col] != 0);
-        
-        boolean isHit = (player1Board[row][col] == 1);
-        player2Attacks[row][col] = isHit ? 2 : 3;
-        
-        statusLabel.setText(player2Name + (isHit ? " HIT!" : " MISSED!"));
-        updateBoardDisplay(true);
-        
-        if (checkForWin(player2Attacks)) {
-            endGame(player2Name + " wins!");
-            return;
-        }
-        
-        switchTurns();
-    }
-    
-    private boolean canPlaceShip(int[][] board, int row, int col, int size, boolean horizontal) {
-        for (int i = 0; i < size; i++) {
-            int r = horizontal ? row : row + i;
-            int c = horizontal ? col + i : col;
-            
-            if (r >= BOARD_SIZE || c >= BOARD_SIZE || board[r][c] != 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-    
-    private void placeShip(int[][] board, int row, int col, int size, boolean horizontal) {
-        for (int i = 0; i < size; i++) {
-            int r = horizontal ? row : row + i;
-            int c = horizontal ? col + i : col;
-            board[r][c] = 1;
-        }
-    }
-    
-    private void placeAIShips() {
-        Random random = new Random();
-        
-        for (int shipSize : SHIP_SIZES) {
-            boolean placed = false;
-            int attempts = 0;
-            
-            while (!placed && attempts < 1000) {
-                int row = random.nextInt(BOARD_SIZE);
-                int col = random.nextInt(BOARD_SIZE);
-                boolean horizontal = random.nextBoolean();
-                
-                if (canPlaceShip(player2Board, row, col, shipSize, horizontal)) {
-                    placeShip(player2Board, row, col, shipSize, horizontal);
-                    placed = true;
-                }
-                attempts++;
-            }
-        }
-        player2Ships.clear();
-    }
-    
-    private void startBattlePhase() {
-        isPlacementPhase = false;
-        isPlayer1Turn = true;
-        timeLeft = GAME_TIME;
-        
-        orientationButton.setVisible(false);
-        shipLabel.setVisible(false);
-        
-        updateBoardLabels();
-        statusLabel.setText("Battle begins! " + player1Name + "'s turn");
-        gameTimer.start();
-        
-        updateBoardDisplay(true);
-        updateBoardDisplay(false);
-    }
-    
-    private boolean checkForWin(int[][] attackBoard) {
-        int hitCount = 0;
-        for (int i = 0; i < BOARD_SIZE; i++) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
-                if (attackBoard[i][j] == 2) hitCount++;
-            }
-        }
-        
-        int totalShipCells = 0;
-        for (int size : SHIP_SIZES) {
-            totalShipCells += size;
-        }
-        
-        return hitCount == totalShipCells;
-    }
-    
-    private void switchTurns() {
-        isPlayer1Turn = !isPlayer1Turn;
-        timeLeft = GAME_TIME;
-        
-        String currentPlayerName = isPlayer1Turn ? player1Name : player2Name;
-        statusLabel.setText(currentPlayerName + "'s turn");
-    }
-    
-    private void endGame(String message) {
-        if (gameTimer.isRunning()) {
-            gameTimer.stop();
-        }
-        
-        statusLabel.setText(message);
-        
-        int choice = JOptionPane.showConfirmDialog(
-            this,
-            message + "\nWould you like to play again?",
-            "Game Over",
-            JOptionPane.YES_NO_OPTION
-        );
-        
-        if (choice == JOptionPane.YES_OPTION) {
-            restartGame();
-        } else {
+
+    private void joinGameFlow() {
+        this.isTwoPlayerMode = true; // Joining implies a two-player game
+        this.gameId = JOptionPane.showInputDialog(this, "Enter the Game ID from Player 1:", "Join Game", JOptionPane.QUESTION_MESSAGE);
+
+        if (this.gameId == null || this.gameId.trim().isEmpty()) {
             System.exit(0);
         }
+        
+        this.playerId = 1; // Joining player is always Player 2
+        this.player1Name = "Player 1"; // Will be updated from server
+        this.player2Name = "Player 2"; // Will be updated from server
+
+        refreshGameState();
+    }
+
+    private void getPlayerNames(boolean isTwoPlayer) {
+        this.player1Name = JOptionPane.showInputDialog(this, "Enter Player 1's Name:", "Player Setup", JOptionPane.QUESTION_MESSAGE);
+        if (this.player1Name == null || this.player1Name.trim().isEmpty()) this.player1Name = "Player 1";
+
+        if (isTwoPlayer) {
+            this.player2Name = JOptionPane.showInputDialog(this, "Enter Player 2's Name:", "Player Setup", JOptionPane.QUESTION_MESSAGE);
+            if (this.player2Name == null || this.player2Name.trim().isEmpty()) this.player2Name = "Player 2";
+        } else {
+            this.player2Name = "Bot";
+        }
+    }
+
+    private void refreshGameState() {
+        String jsonResponse = BattleshipConnector.getGameState(this.gameId, this.playerId);
+        updateUiFromJson(jsonResponse);
+    }
+
+    private void handleBoardClick(int row, int col, boolean isPlayer1Board) {
+        if (isPlayer1Board || !this.isMyTurn) return;
+        String jsonResponse = BattleshipConnector.attack(this.gameId, this.playerId, row, col);
+        updateUiFromJson(jsonResponse);
     }
     
-    private void toggleShipOrientation() {
-        isHorizontal = !isHorizontal;
-        orientationButton.setText(isHorizontal ? "Horizontal" : "Vertical");
+    private void startPolling() {
+        if (pollingTimer != null && pollingTimer.isRunning()) return;
+        pollingTimer = new javax.swing.Timer(3000, e -> refreshGameState());
+        pollingTimer.setRepeats(true);
+        pollingTimer.start();
     }
-    
-    // New method to check if a ship is completely destroyed
-    private boolean isShipDestroyed(int[][] board, int[][] attacks, int row, int col) {
-        if (board[row][col] != 1) return false; // No ship here
-        
-        Set<String> shipCells = new HashSet<>();
-        Set<String> visited = new HashSet<>();
-        
-        // Find all cells belonging to this ship using flood fill
-        findShipCells(board, row, col, shipCells, visited);
-        
-        // Check if all ship cells have been hit
-        for (String cell : shipCells) {
-            String[] coords = cell.split(",");
-            int r = Integer.parseInt(coords[0]);
-            int c = Integer.parseInt(coords[1]);
-            if (attacks[r][c] != 2) { // Not hit
-                return false;
+
+    private void updateUiFromJson(String jsonResponseString) {
+        try {
+            JSONObject responseJson = new JSONObject(jsonResponseString);
+
+            if (responseJson.has("error")) {
+                JOptionPane.showMessageDialog(this, responseJson.getString("error"), "Error", JOptionPane.ERROR_MESSAGE);
+                if (pollingTimer != null) pollingTimer.stop();
+                return;
             }
-        }
-        
-        return true;
-    }
-    
-    // Helper method for flood fill to find all cells of a ship
-    private void findShipCells(int[][] board, int row, int col, Set<String> shipCells, Set<String> visited) {
-        String cell = row + "," + col;
-        
-        if (visited.contains(cell) || row < 0 || row >= BOARD_SIZE || 
-            col < 0 || col >= BOARD_SIZE || board[row][col] != 1) {
-            return;
-        }
-        
-        visited.add(cell);
-        shipCells.add(cell);
-        
-        // Check adjacent cells (up, down, left, right)
-        findShipCells(board, row - 1, col, shipCells, visited);
-        findShipCells(board, row + 1, col, shipCells, visited);
-        findShipCells(board, row, col - 1, shipCells, visited);
-        findShipCells(board, row, col + 1, shipCells, visited);
-    }
-    
-    private void updateBoardDisplay(boolean isPlayer1Board) {
-        JButton[][] buttons = isPlayer1Board ? board1Buttons : board2Buttons;
-        int[][] board = isPlayer1Board ? player1Board : player2Board;
-        int[][] attacks = isPlayer1Board ? player2Attacks : player1Attacks;
-        
-        for (int i = 0; i < BOARD_SIZE; i++) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
-                Color cellColor = Color.CYAN; // Default water color
-                String buttonText = "";
-                
-                if (isPlacementPhase) {
-                    if (board[i][j] == 1) {
-                        cellColor = Color.WHITE; // Ship
-                    }
+
+            JSONObject gameState = responseJson.getJSONObject("game_state");
+
+            this.isMyTurn = (gameState.getInt("current_turn") == this.playerId) && !gameState.getBoolean("game_over");
+
+            // Update local names from the authoritative source (the backend)
+            this.player1Name = gameState.getString("player1_name");
+            this.player2Name = gameState.getString("player2_name");
+            
+            // Update score and labels
+            JSONObject wins = gameState.getJSONObject("wins");
+            this.player1Label.setText(this.player1Name + " | Score: " + wins.get("0") + " | Sunk: " + gameState.getString("opponent_sinks"));
+            this.player2Label.setText(this.player2Name + " | Score: " + wins.get("1") + " | Sunk: " + gameState.getString("your_sinks"));
+            this.statusLabel.setText(gameState.getString("status_message"));
+
+            updateBoard(board1Buttons, gameState.getJSONArray("your_board"));
+            updateBoard(board2Buttons, gameState.getJSONArray("opponent_board"));
+
+            if (!gameState.isNull("match_winner")) {
+                this.isMyTurn = false;
+                if(pollingTimer != null) pollingTimer.stop();
+                String winnerName = gameState.getInt("match_winner") == 0 ? this.player1Name : this.player2Name;
+                JOptionPane.showMessageDialog(this, "Match Over! Winner is " + winnerName, "Match Over", JOptionPane.INFORMATION_MESSAGE);
+            } else if (isTwoPlayerMode) {
+                if (this.isMyTurn || gameState.getBoolean("game_over")) {
+                    if (pollingTimer != null) pollingTimer.stop();
                 } else {
-                    if (isPlayer1Board) {
-                        // Own board - show ships and damage
-                        if (board[i][j] == 1) {
-                            if (attacks[i][j] == 2) {
-                                // Check if ship is completely destroyed
-                                if (isShipDestroyed(board, attacks, i, j)) {
-                                    cellColor = Color.RED;
-                                    buttonText = "XX"; // Destroyed ship
-                                } else {
-                                    cellColor = Color.ORANGE; // Hit but not destroyed
-                                    buttonText = "X";
-                                }
-                            } else {
-                                cellColor = Color.WHITE; // Undamaged ship
-                            }
-                        } else if (attacks[i][j] == 3) {
-                            cellColor = Color.BLUE; // Miss
-                            buttonText = "•";
-                        }
-                    } else {
-                        // Enemy board - only show hits and misses
-                        if (attacks[i][j] == 2) {
-                            // Check if ship is completely destroyed
-                            if (isShipDestroyed(board, attacks, i, j)) {
-                                cellColor = Color.RED;
-                                buttonText = "XX"; // Destroyed ship
-                            } else {
-                                cellColor = Color.ORANGE; // Hit but not destroyed
-                                buttonText = "X";
-                            }
-                        } else if (attacks[i][j] == 3) {
-                            cellColor = Color.BLUE; // Miss
-                            buttonText = "•";
-                        }
-                    }
+                    startPolling();
                 }
-                
-                buttons[i][j].setBackground(cellColor);
-                buttons[i][j].setText(buttonText);
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing JSON response: " + jsonResponseString);
+            e.printStackTrace();
+        }
+    }
+
+    private void updateBoard(JButton[][] buttons, JSONArray boardData) {
+        for (int r = 0; r < BOARD_SIZE; r++) {
+            JSONArray boardRow = boardData.getJSONArray(r);
+            for (int c = 0; c < BOARD_SIZE; c++) {
+                String cell = boardRow.getString(c);
+                switch (cell) {
+                    case "S": // Your own, untouched ship
+                        buttons[r][c].setBackground(Color.decode("#000000"));
+                        buttons[r][c].setText(""); // FIX: Cleared button text
+                        break;
+                    case "~": // A confirmed miss on the opponent's board
+                        buttons[r][c].setBackground(Color.decode("#6dfff6"));
+                        buttons[r][c].setText("\u2022");
+                        break;
+                    case "O": // A miss on your own board
+                        buttons[r][c].setBackground(Color.decode("#0078ff"));
+                        buttons[r][c].setText("\u2022");
+                        break;
+                    case "x": // A hit ship part
+                        buttons[r][c].setBackground(Color.decode("#ff8700"));
+                        buttons[r][c].setText("X");
+                        break;
+                    case "X": // A fully sunk ship part
+                        buttons[r][c].setBackground(Color.decode("#ff0000"));
+                        buttons[r][c].setText("X");
+                        break;
+                    case "?":
+                    default: // FIX: Corrected switch structure and color format
+                        buttons[r][c].setBackground(Color.decode("#d3d3d3")); // Added '#'
+                        buttons[r][c].setText(""); // FIX: Cleared button text
+                        break;
+                }
             }
         }
-    }
-    
-    private void updateBoardLabels() {
-        if (isPlacementPhase) {
-            player1Label.setText(player1Name + " - Place Ships");
-            player2Label.setText(player2Name + " - Place Ships");
-        } else {
-            player1Label.setText(player1Name + "'s Ships");
-            player2Label.setText(isOnePlayer ? (player2Name + "'s Waters") : (player2Name + "'s Waters"));
-        }
-    }
-    
-    private void updateStatusMessage() {
-        if (isPlacementPhase) {
-            String currentPlayerName = (placementPlayer == 1) ? player1Name : player2Name;
-            statusLabel.setText(currentPlayerName + ": Place your ships");
-        } else {
-            String currentPlayerName = isPlayer1Turn ? player1Name : player2Name;
-            statusLabel.setText(currentPlayerName + "'s turn");
-        }
-    }
-    
-    private void updateShipInformation() {
-        if (isPlacementPhase) {
-            List<Integer> ships = (placementPlayer == 1) ? player1Ships : player2Ships;
-            if (!ships.isEmpty() && currentShipIndex < ships.size()) {
-                int shipSize = ships.get(currentShipIndex);
-                String shipName = SHIP_NAMES[shipSize - 2]; // Convert size to name index
-                shipLabel.setText("Place: " + shipName + " (" + shipSize + " cells)");
-            }
-        }
-    }
-    
-    private void updateTimerDisplay() {
-        int minutes = timeLeft / 60;
-        int seconds = timeLeft % 60;
-        timerLabel.setText(String.format("Time: %d:%02d", minutes, seconds));
     }
     
     private void restartGame() {
-        if (gameTimer.isRunning()) {
-            gameTimer.stop();
-        }
-        
-        // Reset all game state
-        isPlacementPhase = true;
-        isPlayer1Turn = true;
-        placementPlayer = 1;
-        currentShipIndex = 0;
-        isHorizontal = true;
-        timeLeft = GAME_TIME;
-        
-        // Clear all boards
-        clearBoard(player1Board);
-        clearBoard(player2Board);
-        clearBoard(player1Attacks);
-        clearBoard(player2Attacks);
-        
-        // Reset ship lists
-        player1Ships.clear();
-        player2Ships.clear();
-        for (int size : SHIP_SIZES) {
-            player1Ships.add(size);
-            player2Ships.add(size);
-        }
-        
-        // Reset UI
-        updateBoardDisplay(true);
-        updateBoardDisplay(false);
-        
-        // Start new game
-        startGameSetup();
+        if(pollingTimer != null) pollingTimer.stop();
+        this.dispose();
+        SwingUtilities.invokeLater(() -> new Game().setVisible(true));
     }
-    
-    private void clearBoard(int[][] board) {
-        for (int i = 0; i < BOARD_SIZE; i++) {
-            for (int j = 0; j < BOARD_SIZE; j++) {
-                board[i][j] = 0;
-            }
-        }
-    }
-    
+
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                new Game().setVisible(true);
-            }
-        });
+        SwingUtilities.invokeLater(() -> new Game().setVisible(true));
     }
 }
