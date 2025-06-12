@@ -2,11 +2,16 @@ import java.io.*;
 import java.net.*;
 import org.json.JSONObject;
 
+/**
+ * A utility class with static methods to handle all communication with the Python backend API.
+ * This class is responsible for sending HTTP requests and handling the responses.
+ */
 public class BattleshipConnector {
 
     // Send a request to the backend to create the game
     public static String[] createGame(String gamemode, String player1Name, String player2Name, int numGames) {
         try {
+            // Establishes a connection to the /game endpoint on the server.
             URL url = new URL("http://127.0.0.1:5001/game");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
@@ -14,14 +19,14 @@ public class BattleshipConnector {
             conn.setRequestProperty("Accept", "application/json");
             conn.setDoOutput(true);
 
-            // Create JSON payload
+            // Constructs the JSON object with all the necessary game setup details.
             JSONObject jsonInput = new JSONObject();
             jsonInput.put("mode", gamemode);
             jsonInput.put("player1_name", player1Name);
             jsonInput.put("player2_name", player2Name);
             jsonInput.put("number_of_games", numGames);
 
-            // Send request
+            // Writes the JSON payload to the request's output stream.
             try (OutputStream os = conn.getOutputStream()) {
                 byte[] input = jsonInput.toString().getBytes("utf-8");
                 System.out.println("Message sent to server:");
@@ -29,7 +34,8 @@ public class BattleshipConnector {
                 os.write(input, 0, input.length);
             }
 
-            // Read response
+            // Reads the server's response from the input stream.
+            // This block assumes a successful response (e.g., HTTP 200 or 201).
             StringBuilder response = new StringBuilder();
             try (BufferedReader br = new BufferedReader(
                     new InputStreamReader(conn.getInputStream(), "utf-8"))) {
@@ -41,7 +47,7 @@ public class BattleshipConnector {
                 System.out.println(response.toString());
             }
 
-            // Parse JSON response
+            // Parses the JSON response to extract only the essential information needed by the client.
             JSONObject jsonResponse = new JSONObject(response.toString());
             String gameid = jsonResponse.optString("game_id", "");
             String message = jsonResponse.optString("message", "");
@@ -55,15 +61,15 @@ public class BattleshipConnector {
             return new String[] { gameid, message };
 
         } catch (Exception e) {
+            // In case of any connection or I/O error, print the stack trace and return an error message.
             e.printStackTrace();
             return new String[] { "", "Error: " + e.getMessage() };
         }
     }
 
-    // Add this new method
     public static String getGameState(String gameId, int playerId) {
         try {
-            // Note the construction of the URL with the gameId and a query parameter
+            // Construct the URL, including the gameId as a path variable and playerId as a query parameter.
             URL url = new URL("http://127.0.0.1:5001/game/" + gameId + "?player_id=" + playerId);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
@@ -73,7 +79,6 @@ public class BattleshipConnector {
                 return "{\"error\": \"Failed : HTTP error code : " + conn.getResponseCode() + "\"}";
             }
 
-            // Read response
             StringBuilder response = new StringBuilder();
             try (BufferedReader br = new BufferedReader(
                     new InputStreamReader(conn.getInputStream(), "utf-8"))) {
@@ -90,10 +95,10 @@ public class BattleshipConnector {
         }
     }
 
-    // Add this new method
     public static String attack(String gameId, int playerId, int row, int col) {
-        HttpURLConnection conn = null; // Defined outside the try block
+        HttpURLConnection conn = null;
         try {
+            // Establish a connection to the /attack endpoint for the specific game.
             URL url = new URL("http://127.0.0.1:5001/game/" + gameId + "/attack");
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
@@ -101,24 +106,25 @@ public class BattleshipConnector {
             conn.setRequestProperty("Accept", "application/json");
             conn.setDoOutput(true);
 
-            // Create and send JSON payload
+            // Construct the JSON payload with the attack coordinates.
             JSONObject jsonInput = new JSONObject();
             jsonInput.put("player_id", playerId);
             jsonInput.put("row", row);
             jsonInput.put("col", col);
 
+            // Write the JSON payload to the request's output stream.
             try (OutputStream os = conn.getOutputStream()) {
                 byte[] input = jsonInput.toString().getBytes("utf-8");
                 os.write(input, 0, input.length);
             }
 
-            // NEW: Check the response code
+            // Check the HTTP response code to determine if the request was successful.
             int responseCode = conn.getResponseCode();
         
-            // Determine which stream to read from (input stream for success, error stream for failure)
+            // Read from the appropriate stream: InputStream for success (e.g., 200) or ErrorStream for failure (e.g., 400).
             InputStream stream = (responseCode >= 400) ? conn.getErrorStream() : conn.getInputStream();
         
-            // Read the response from the appropriate stream
+            // Read the full response, which could be a success JSON object or an error JSON object.
             StringBuilder response = new StringBuilder();
             try (BufferedReader br = new BufferedReader(new InputStreamReader(stream, "utf-8"))) {
                 String responseLine;
@@ -132,6 +138,7 @@ public class BattleshipConnector {
             e.printStackTrace();
             return "{\"error\": \"" + e.getMessage() + "\"}";
         } finally {
+            // Ensure the connection is always closed after the request is complete.
             if(conn != null) {
                 conn.disconnect();
             }

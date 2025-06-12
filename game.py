@@ -1,12 +1,15 @@
 # game.py
-# This file contains the core logic for the Battleship game.
+# This file contains the core logic for the Battleship game engine.
+# It is completely decoupled from the web server and manages all game rules and state for a single round.
 
 import random
 
 class Game:
     """
-    Manages the entire game state, including player boards, turns, and game mode.
+    Manages the entire state of a single Battleship round, including player boards,
+    turns, AI behavior, and win conditions.
     """
+    # --- Class-level constants for game rules ---
     PLAYER_1 = 0
     PLAYER_2 = 1
     SHIP_SIZES = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1] # Standard Battleship ship lengths
@@ -15,90 +18,51 @@ class Game:
     SHIP_NAMES = {4: "Battleship", 3: "Cruiser", 2: "Destroyer", 1: "Submarine"}
 
     def __init__(self, mode='vs_bot'):
-        """Initializes a new game with all ships randomly placed."""
+        """
+        Initializes a new game round.
+        By default, all ships are randomly placed on the boards for both players.
+        """
         self.mode = mode
         self.players = {
             self.PLAYER_1: {'board': Board(self.GRID_SIZE), 'ships_placed': True},
             self.PLAYER_2: {'board': Board(self.GRID_SIZE), 'ships_placed': True}
         }
-        # self.status_message = "All ships placed. Player 1's turn to attack." # This line is redundant
-        self.bot_target_list = []
+        self.bot_target_list = [] # A priority queue for the bot's "Target" mode.
     
         #Automatically place ships for both players ---
         self._randomly_place_ships(self.PLAYER_1)
         self._randomly_place_ships(self.PLAYER_2)
 
+        # Initialize game state variables.
         self.current_turn = self.PLAYER_1
         self.game_over = False
         self.winner = None
         self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
         self.status_message = "All ships placed. Player 1's turn to attack."
-        
-    # def _place_bot_ships(self):
-    #     """Randomly places ships for the bot (Player 2)."""
-    #     bot_board = self.players[self.PLAYER_2]['board']
-    #     for size in self.SHIP_SIZES:
-    #         placed = False
-    #         while not placed:
-    #             orientation = random.choice(['horizontal', 'vertical'])
-    #             row = random.randint(0, self.GRID_SIZE - 1)
-    #             col = random.randint(0, self.GRID_SIZE - 1)
-    #             placed = bot_board.place_ship(size, row, col, orientation)
     
     def _randomly_place_ships(self, player_id):
         """Randomly places all ships for a given player."""
         player_board = self.players[player_id]['board']
         for size in self.SHIP_SIZES:
             placed = False
+            # Loop until a valid position is found for the current ship size.
             while not placed:
                 orientation = random.choice(['horizontal', 'vertical'])
                 row = random.randint(0, self.GRID_SIZE - 1)
                 col = random.randint(0, self.GRID_SIZE - 1)
+                # The Board class's place_ship method handles all placement validation.
                 placed = player_board.place_ship(size, row, col, orientation)
 
-    # def place_player_ship(self, player, size, row, col, orientation):
-    #     """Attempts to place a ship for a given player with full validation."""
-    #     if self.game_over:
-    #         return False, "Game is over."
-    #     if player not in self.players:
-    #         return False, "Invalid player."
-    #     if self.players[player]['ships_placed']:
-    #         return False, "All ships have already been placed."
-
-    #     # --- CORRECTED VALIDATION LOGIC ---
-    #     if size not in self.SHIP_SIZES:
-    #         return False, f"Invalid ship size. Valid sizes are: {self.SHIP_SIZES}"
-
-    #     board = self.players[player]['board']
-    #     placed_ship_sizes = [len(s['coords']) for s in board.ships]
-    #     if placed_ship_sizes.count(size) >= self.SHIP_SIZES.count(size):
-    #         return False, f"All ships of size {size} have already been placed."
-    #     # --- END OF CORRECTION ---
-
-    #     if not board.place_ship(size, row, col, orientation):
-    #         return False, "Invalid placement. Ships may be out of bounds or overlapping."
-
-    #     # Check if all ships for this player are placed
-    #     if len(board.ships) == len(self.SHIP_SIZES):
-    #         self.players[player]['ships_placed'] = True
-    #         if self._are_all_ships_placed():
-    #             self.status_message = "Player 1's turn to attack."
-    #         else:
-    #             self.status_message = f"Player {player + 1}'s ships placed. Waiting for opponent."
-
-    #     return True, "Ship placed successfully."
-
-
     def _are_all_ships_placed(self):
-        """Checks if both players have placed all their ships."""
+        """A utility to check if both players have finished placing their ships."""
         return all(self.players[p]['ships_placed'] for p in self.players)
 
-    # game.py -> Replace the whole attack() method
-
-# Replace the entire attack method in game.py with this version.
-
     def attack(self, player, row, col):
-        """Processes a single attack and determines the next step."""
+        """
+        Processes a single attack, updates the game state, and handles the "hit and go again" rule.
+        If playing against a bot and the player misses, this method also triggers the bot's entire turn.
+        """
+        # --- Pre-attack validation ---
         if self.game_over:
             return {'error': 'Game is over.'}
         if not self._are_all_ships_placed():
@@ -117,7 +81,7 @@ class Game:
         if result == 'already_attacked':
             return {'error': 'This cell has already been attacked.'}
 
-        # --- Message Logic ---
+        # --- Update status messages for both players based on the attack result ---
         if result == 'miss':
             self.last_event_messages[player] = "You missed."
             self.last_event_messages[opponent] = "The opponent fired and missed."
@@ -129,7 +93,7 @@ class Game:
             self.last_event_messages[player] = f"You sunk their {ship_name}!"
             self.last_event_messages[opponent] = f"Your {ship_name} has been sunk!"
 
-    # --- Win and Turn Logic ---
+        # --- Win and Turn Logic ---
         response = {'player_attack': result, 'ship_info': ship_info}
         if opponent_board.all_ships_sunk():
             self.game_over = True
@@ -139,45 +103,48 @@ class Game:
             response['winner'] = self.winner
         else:
             if result == 'miss':
-                # On a miss, switch turns.
+                # On a miss, switch the turn to the opponent.
                 self.current_turn = opponent
                 self.status_message = f"Player {self.current_turn + 1}'s turn."
-                # If it's now the bot's turn, execute its entire turn.
+                # If it's now the bot's turn, execute its entire turn sequence.
                 if self.mode == 'vs_bot' and self.current_turn == self.PLAYER_2:
                     response['bot_turns'] = self._execute_bot_turn()
             else:
-                # On a hit or sunk, the turn does NOT change.
+                # On a hit or sunk, the current player gets another turn.
                 self.status_message = f"Hit! Player {player + 1} gets another turn."
 
         return response
 
     def _execute_bot_turn(self):
-        """Handles the bot's entire turn, attacking until it misses or the game ends."""
+        """Handles the bot's entire turn, allowing it to attack repeatedly until it misses or wins."""
         turn_summary = []
-        # Loop as long as it's the bot's turn and the game isn't over.
+        # The bot continues to attack as long as it's its turn and the game isn't over.
         while self.current_turn == self.PLAYER_2 and not self.game_over:
             shot_result, shot_details = self._bot_single_attack()
             turn_summary.append(shot_details)
 
+            # If the bot makes a winning move, break the loop.
             if shot_details.get('game_over'):
-                break # Bot won, end its turn
+                break
         
+            # If the bot misses, its turn is over. Switch back to the human player.
             if shot_result == 'miss':
                 self.current_turn = self.PLAYER_1
                 self.status_message = f"Player {self.PLAYER_1 + 1}'s turn."
-                break # Bot missed, its turn is over
+                break
 
         return turn_summary
 
     def _bot_single_attack(self):
-        """Makes a single 'smart' attack for the bot and returns the result."""
+        """Makes one "smart" attack for the bot using Hunt/Target logic."""
         player_board = self.players[self.PLAYER_1]['board']
         row, col = -1, -1
 
+        """Makes one "smart" attack for the bot using Hunt/Target logic."""
         if self.bot_target_list:
             row, col = self.bot_target_list.pop()
+        # HUNT mode: Otherwise, fire at a random, un-attacked cell.    
         else:
-            # Hunt for a new target
             while True:
                 r = random.randint(0, self.GRID_SIZE - 1)
                 c = random.randint(0, self.GRID_SIZE - 1)
@@ -188,12 +155,14 @@ class Game:
         result, ship_info = player_board.receive_attack(row, col)
         shot_details = {'result': result, 'row': row, 'col': col, 'ship_info': ship_info}
 
+        # Update bot's strategy based on the result. Update event messages for display on the frontend.
         if result == 'sunk':
-            self.bot_target_list = [] # Reset targeting logic
+            self.bot_target_list = [] # A sink resets the targeting logic.
             ship_name = self.SHIP_NAMES.get(ship_info['size'], "ship")
             self.last_event_messages[self.PLAYER_1] = f"The bot sunk your {ship_name}!"
             self.last_event_messages[self.PLAYER_2] = f"You sunk their {ship_name}!"
         elif result == 'hit':
+            # On a hit, add valid adjacent cells to the target list.
             self.last_event_messages[self.PLAYER_1] = "The bot hit your ship!"
             self.last_event_messages[self.PLAYER_2] = "You hit an enemy ship!"
             for r_offset, c_offset in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
@@ -205,6 +174,7 @@ class Game:
             self.last_event_messages[self.PLAYER_1] = "The bot fired and missed."
             self.last_event_messages[self.PLAYER_2] = "You missed."
 
+        # Check if the bot's attack was a winning move.
         if player_board.all_ships_sunk():
             self.game_over = True
             self.winner = self.PLAYER_2
@@ -218,16 +188,16 @@ class Game:
 
     def get_state(self, player):
         """
-        Returns the game state from the perspective of a given player.
-        The opponent's ship locations are hidden.
+        Compiles the complete game state from the perspective of a single player.
+        This ensures that a player only sees their own un-hit ships.
         """
         opponent = self.PLAYER_2 if player == self.PLAYER_1 else self.PLAYER_1
 
-        # First, get the full state dictionaries from each board
+        # Get the state of each player's board (revealing ships only for the current player).
         your_board_state = self.players[player]['board'].to_dict(reveal_ships=True)
         opponent_board_state = self.players[opponent]['board'].to_dict(reveal_ships=False)
 
-        # Now, build the final state dictionary for the API
+        # Assemble the final state dictionary for the API.
         return {
             'player_id': player,
             'your_board': your_board_state['grid'],
@@ -245,22 +215,22 @@ class Game:
         }
 
     def reset_game(self):
-        """Resets the game for the next round in a match."""
+        """Resets the game state for the next round in a multi-game match."""
+        # Create fresh boards for both players.
         self.players = {
             self.PLAYER_1: {'board': Board(self.GRID_SIZE), 'ships_placed': False},
             self.PLAYER_2: {'board': Board(self.GRID_SIZE), 'ships_placed': False}
         }
+        # Reset all game state variables.
         self.current_turn = self.PLAYER_1
         self.game_over = False
         self.winner = None
         self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
         self.bot_target_list = [] # Also reset the target list for a new round
     
-        # FIX: Randomly place ships for BOTH players to prepare for the next round.
-        # This ensures the "random placement for all" rule is consistent.
+        # Randomly place ships for both players for the new round.
         self._randomly_place_ships(self.PLAYER_1)
         self.players[self.PLAYER_1]['ships_placed'] = True
-    
         self._randomly_place_ships(self.PLAYER_2)
         self.players[self.PLAYER_2]['ships_placed'] = True
 
@@ -268,20 +238,19 @@ class Game:
 
 
 class Board:
-    """Represents a single player's 10x10 grid."""
+    """Represents a single player's 10x10 grid, their ships, and attack history."""
     def __init__(self, size):
+        """Initializes an empty board."""
         self.size = size
         self.grid = [['~' for _ in range(size)] for _ in range(size)] # '~' for water
         self.ships = []
         self.attacks = set() # Stores (row, col) tuples of attacks
         self.sunk_ships_count = 0
 
-    # Replace the existing place_ship method with this one.
-
     def place_ship(self, size, row, col, orientation):
         """
-        Places a ship on the board if the location is valid and not adjacent
-        to any other ships.
+        Places a ship on the board if the location is valid and not adjacent to other ships.
+        This enforces the "1-cell gap" rule.
         """
         coords = []
         if orientation == 'horizontal':
@@ -295,34 +264,34 @@ class Board:
         else:
             return False  # Invalid orientation
 
-        # NEW: Validate that the ship and its surrounding area are free
+        # Validate that the ship's coordinates and its entire surrounding area are free.
         for r, c in coords:
-            # Iterate through a 3x3 bounding box around each ship coordinate
+            #  Iterate through a 3x3 bounding box around each part of the ship.
             for i in range(r - 1, r + 2):
                 for j in range(c - 1, c + 2):
-                    # Check if the neighboring cell is within the grid bounds
+                    # Check if the neighboring cell is within the grid bounds.
                     if 0 <= i < self.size and 0 <= j < self.size:
                         # If any cell in the bounding box already has a ship, placement is invalid
                         if self.grid[i][j] == 'S':
                             return False
 
-        # If all checks pass, place the ship
+        # If all checks pass, add the ship to the board state.
         ship = {'coords': coords, 'hits': set()}
         self.ships.append(ship)
         for r, c in coords:
-            self.grid[r][c] = 'S'
+            self.grid[r][c] = 'S' # Mark the ship's location on the master grid.
         return True
 
     # Replace the existing receive_attack method with this one.
 
     def receive_attack(self, row, col):
-        """Records an attack and returns the result (hit, miss, or sunk)."""
+        """Records an attack, determines the result, and reveals surrounding cells on a sink."""
         if (row, col) in self.attacks:
             return 'already_attacked', None
 
         self.attacks.add((row, col))
 
-        # Check if a ship was hit
+        # Check if the attack hit any ship.
         for ship in self.ships:
             if (row, col) in ship['coords']:
                 ship['hits'].add((row, col))
@@ -330,53 +299,48 @@ class Board:
                 if len(ship['hits']) == len(ship['coords']):
                     self.sunk_ships_count += 1
                     
-                    # NEW: Reveal surrounding cells when a ship is sunk
-                    # Iterate through each coordinate of the newly sunk ship
+                    # When a ship is sunk, automatically mark all surrounding cells as attacked.
+                    # This reveals the water around the sunk ship to the players.
                     for r_ship, c_ship in ship['coords']:
-                        # Iterate through the 3x3 bounding box around it
                         for i in range(r_ship - 1, r_ship + 2):
                             for j in range(c_ship - 1, c_ship + 2):
-                                # Check if the cell is within the grid bounds
                                 if 0 <= i < self.size and 0 <= j < self.size:
-                                    # Add the surrounding water cells to the set of attacks
-                                    # The existing to_dict() method will handle displaying them
                                     self.attacks.add((i, j))
                     
                     return 'sunk', {'size': len(ship['coords']), 'coords': ship['coords']}
                 return 'hit', None
 
+        # If no ship was hit, it's a miss.
         return 'miss', None
 
     def all_ships_sunk(self):
         """Checks if all ships on the board have been sunk."""
-        if not self.ships: return False # No ships placed yet
+        if not self.ships: return False
         return all(len(s['hits']) == len(s['coords']) for s in self.ships)
-
-    # In game.py, inside the Board class
 
     def to_dict(self, reveal_ships=False):
         """
         Converts the board state to a dictionary for JSON serialization.
-        Implements advanced "fog of war" display logic.
+        This method implements the "fog of war" by hiding opponent ships.
         """
-        # If it's the opponent's board, start with '?' for unknown cells.
+        # For an opponent's board, start with all cells hidden as '?'.
         if not reveal_ships:
             display_grid = [['?' for _ in range(self.size)] for _ in range(self.size)]
+        # For your own board, show the water '~' and your ship locations 'S'.
         else:
-            # For your own board, start with '~' for water.
             display_grid = [['~' for _ in range(self.size)] for _ in range(self.size)]
-            # And show your own ships.
             for ship in self.ships:
                 for r, c in ship['coords']:
                     display_grid[r][c] = 'S'
     
-        # Handle misses first
+        # Mark all misses on the display grid.
         for r, c in self.attacks:
-            if self.grid[r][c] == '~': # If an attacked cell is water in the master grid
-                # On your own board, this shows as 'O'. On the opponent's, it changes '?' to '~'.
+            if self.grid[r][c] == '~':
+                # A miss on an opponent's board reveals water '~'.
+                # A miss on your own board is marked as 'O'.
                 display_grid[r][c] = '~' if not reveal_ships else 'O'
 
-        # Handle hits and sunk ships
+        # Mark all hits and sunk ships on the display grid.
         for ship in self.ships:
             is_sunk = len(ship['hits']) == len(ship['coords'])
             for r, c in ship['hits']:
