@@ -36,8 +36,11 @@ You will also need the org.json library for the Java frontend.
 5. Open a new terminal in your code editor.
 6. Run app.py using the command 'python app.py'.
 7. Open another new terminal and enter the following commands in order.
-   'cd src',
+   'cd src'
+   
    'javac -cp "..;../lib/json-20231013.jar" BattleshipConnector.java Game.java'
+   
    'java -cp ".;../lib/json-20231013.jar" Game'
-8. Follow the instructions on the UI of the game.
-9. If playing two player, once the first player has generated a code and opened up their game window. From a new terminal enter the following commands 'cd src', 'java -cp ".;../lib/json-20231013.jar" Game', and click 'Join Game' and then enter the code received from the player who set up the game. 
+   
+9. Follow the instructions on the UI of the game.
+10. If playing two player, once the first player has generated a code and opened up their game window. From a new terminal enter the following commands 'cd src', 'java -cp ".;../lib/json-20231013.jar" Game', and click 'Join Game' and then enter the code received from the player who set up the game. 
