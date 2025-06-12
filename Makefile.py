@@ -1,9 +1,9 @@
 import concurrent.futures
 import subprocess
+import time
 
 commands = [
     "python -m flask run",
-    "javac -cp \".;lib/json-20231013.jar\" -d bin src/*.java",
     "java -cp \".;lib/json-20231013.jar;bin\" Mainer"
 ]
 
