@@ -98,40 +98,6 @@ def get_game_state(game_id):
         "game_state": game_state
     })
 
-# @app.route("/game/<game_id>/place", methods=["POST"])
-# def place_ship(game_id):
-#     session = games.get(game_id)
-#     if not session:
-#         return jsonify({"error": "Game not found"}), 404
-#     game = session['game_logic']
-
-#     data = request.get_json()
-#     try:
-#         player_id = data['player_id']
-#         ship_size = data['ship_size']
-#         row = data['row']
-#         col = data['col']
-#         orientation = data['orientation']
-#     except KeyError:
-#         return jsonify({"error": "Missing required fields in request body"}), 400
-    
-#     try:
-#         player_id = int(player_id)
-#         if player_id not in [Game.PLAYER_1, Game.PLAYER_2]:
-#             raise ValueError
-#     except (ValueError, TypeError):
-#         return jsonify({"error": "Invalid player_id"}), 400
-
-#     success, message = game.place_player_ship(player_id, ship_size, row, col, orientation)
-
-#     if not success:
-#         return jsonify({"error": message}), 400
-
-#     return jsonify({"message": message, "game_state": game.get_state(player_id)})
-
-# The corrected attack function in app.py
-
-# Replace the attack function in app.py with this final version.
 
 @app.route("/game/<game_id>/attack", methods=["POST"])
 def attack(game_id):
@@ -159,6 +125,13 @@ def attack(game_id):
 
     if "error" in result:
         return jsonify(result), 400
+
+    bot_turns = result.get('bot_turns')
+    if bot_turns:
+        last_bot_turn = bot_turns[-1]
+        if last_bot_turn.get('game_over'):
+            result['game_over'] = True
+            result['winner'] = last_bot_turn.get('winner')
 
     if result.get("game_over"):
         winner = result.get("winner")
