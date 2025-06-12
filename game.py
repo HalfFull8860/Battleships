@@ -98,7 +98,7 @@ class Game:
 # Replace the entire attack method in game.py with this version.
 
     def attack(self, player, row, col):
-        """Processes an attack from one player to another."""
+        """Processes a single attack and determines the next step."""
         if self.game_over:
             return {'error': 'Game is over.'}
         if not self._are_all_ships_placed():
@@ -116,8 +116,8 @@ class Game:
 
         if result == 'already_attacked':
             return {'error': 'This cell has already been attacked.'}
-    
-        # --- Message Logic (no changes here) ---
+
+        # --- Message Logic ---
         if result == 'miss':
             self.last_event_messages[player] = "You missed."
             self.last_event_messages[opponent] = "The opponent fired and missed."
@@ -129,105 +129,92 @@ class Game:
             self.last_event_messages[player] = f"You sunk their {ship_name}!"
             self.last_event_messages[opponent] = f"Your {ship_name} has been sunk!"
 
-        # --- Win Condition and Return Logic ---
+    # --- Win and Turn Logic ---
+        response = {'player_attack': result, 'ship_info': ship_info}
         if opponent_board.all_ships_sunk():
             self.game_over = True
             self.winner = player
             self.status_message = f"Game Over! Player {player + 1} wins!"
-            self.last_event_messages = {self.PLAYER_1: "", self.PLAYER_2: ""}
-        
-            # FIX: Return a dictionary that explicitly includes the game_over status.
-            return {
-                'player_attack': result,
-                'ship_info': ship_info,
-                'game_over': self.game_over,
-                'winner': self.winner
-            }
+            response['game_over'] = self.game_over
+            response['winner'] = self.winner
         else:
-            # --- Turn Switching Logic (no changes here) ---
-            self.current_turn = opponent
-            self.status_message = f"Player {self.current_turn + 1}'s turn."
+            if result == 'miss':
+                # On a miss, switch turns.
+                self.current_turn = opponent
+                self.status_message = f"Player {self.current_turn + 1}'s turn."
+                # If it's now the bot's turn, execute its entire turn.
+                if self.mode == 'vs_bot' and self.current_turn == self.PLAYER_2:
+                    response['bot_turns'] = self._execute_bot_turn()
+            else:
+                # On a hit or sunk, the turn does NOT change.
+                self.status_message = f"Hit! Player {player + 1} gets another turn."
 
-            if self.mode == 'vs_bot' and self.current_turn == self.PLAYER_2:
-                bot_result, bot_attack_details = self._bot_attack()
-                # If the bot makes a winning move, return that game_over status
-                if bot_attack_details.get('game_over'):
-                    return bot_attack_details
-                return {'player_attack': result, 'ship_info': ship_info, 'bot_attack_info': bot_attack_details}
+        return response
 
-        return {'player_attack': result, 'ship_info': ship_info}
+    def _execute_bot_turn(self):
+        """Handles the bot's entire turn, attacking until it misses or the game ends."""
+        turn_summary = []
+        # Loop as long as it's the bot's turn and the game isn't over.
+        while self.current_turn == self.PLAYER_2 and not self.game_over:
+            shot_result, shot_details = self._bot_single_attack()
+            turn_summary.append(shot_details)
 
-    # Replace the existing _bot_attack method with this one.
+            if shot_details.get('game_over'):
+                break # Bot won, end its turn
+        
+            if shot_result == 'miss':
+                self.current_turn = self.PLAYER_1
+                self.status_message = f"Player {self.PLAYER_1 + 1}'s turn."
+                break # Bot missed, its turn is over
 
-    # Replace the existing _bot_attack method with this one.
+        return turn_summary
 
-    def _bot_attack(self):
-        """
-        The bot makes a "smart" attack.
-        Hunts randomly, then targets adjacent cells after a hit.
-        """
+    def _bot_single_attack(self):
+        """Makes a single 'smart' attack for the bot and returns the result."""
         player_board = self.players[self.PLAYER_1]['board']
-        attacked = False
         row, col = -1, -1
 
-        # --- HUNT / TARGET LOGIC ---
-        # If there are priority targets, enter TARGET mode
         if self.bot_target_list:
-            # Take the most recent target from the list
             row, col = self.bot_target_list.pop()
-        # Otherwise, enter HUNT mode
         else:
-            # Hunt randomly for a cell that has not been attacked yet
-            while not attacked:
+            # Hunt for a new target
+            while True:
                 r = random.randint(0, self.GRID_SIZE - 1)
                 c = random.randint(0, self.GRID_SIZE - 1)
                 if (r, c) not in player_board.attacks:
                     row, col = r, c
-                    attacked = True
+                    break
 
-        # --- EXECUTE ATTACK ---
         result, ship_info = player_board.receive_attack(row, col)
-        bot_attack_details = {'result': result, 'row': row, 'col': col, 'ship_info': ship_info}
+        shot_details = {'result': result, 'row': row, 'col': col, 'ship_info': ship_info}
 
-        # --- UPDATE STATE BASED ON RESULT ---
-        # If a ship is SUNK, clear the target list and go back to HUNTING
         if result == 'sunk':
-            self.bot_target_list = []
+            self.bot_target_list = [] # Reset targeting logic
             ship_name = self.SHIP_NAMES.get(ship_info['size'], "ship")
             self.last_event_messages[self.PLAYER_1] = f"The bot sunk your {ship_name}!"
             self.last_event_messages[self.PLAYER_2] = f"You sunk their {ship_name}!"
-    
-        # If it's a HIT, add adjacent cells to the target list
         elif result == 'hit':
             self.last_event_messages[self.PLAYER_1] = "The bot hit your ship!"
             self.last_event_messages[self.PLAYER_2] = "You hit an enemy ship!"
-            # Add valid neighbors (up, down, left, right) to the target list
             for r_offset, c_offset in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                 next_r, next_c = row + r_offset, col + c_offset
-                # Check if the cell is on the board and not already attacked
-                if (0 <= next_r < self.GRID_SIZE and
-                    0 <= next_c < self.GRID_SIZE and
-                    (next_r, next_c) not in player_board.attacks):
-                    self.bot_target_list.append((next_r, next_c))
-
-        # If it's a MISS
-        else:
+                if (0 <= next_r < self.GRID_SIZE and 0 <= next_c < self.GRID_SIZE and (next_r, next_c) not in player_board.attacks):
+                    if (next_r, next_c) not in self.bot_target_list:
+                        self.bot_target_list.append((next_r, next_c))
+        else: # Miss
             self.last_event_messages[self.PLAYER_1] = "The bot fired and missed."
             self.last_event_messages[self.PLAYER_2] = "You missed."
 
-        # --- Bot Win Condition ---
         if player_board.all_ships_sunk():
             self.game_over = True
             self.winner = self.PLAYER_2
             self.status_message = "Game Over! Bot wins!"
-            bot_attack_details['game_over'] = self.game_over
-            bot_attack_details['winner'] = self.winner
-        else:
-            self.current_turn = self.PLAYER_1
-            self.status_message = f"Player {self.current_turn + 1}'s turn."
+            shot_details['game_over'] = self.game_over
+            shot_details['winner'] = self.winner
 
-        # We return bot_attack_result for the old logic, but bot_attack_details is what's used
-        return result, bot_attack_details
+        return result, shot_details
+
+
 
     def get_state(self, player):
         """

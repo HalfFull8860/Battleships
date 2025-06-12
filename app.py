@@ -169,8 +169,7 @@ def attack(game_id):
             else:
                 game.reset_game()
 
-    # FIX: Get the final game state and enrich it with session data
-    # to ensure the response is always complete.
+
     final_game_state = game.get_state(player_id)
     final_game_state['player1_name'] = session['player1_name']
     final_game_state['player2_name'] = session['player2_name']
@@ -179,7 +178,7 @@ def attack(game_id):
 
     return jsonify({
         "message": "Attack successful!",
-        "attack_result": result,
+        "attack_result": result, # 'result' now contains player_attack and possibly bot_turns
         "game_state": final_game_state
     })
 

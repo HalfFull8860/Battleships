@@ -1,7 +1,6 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.net.URL;
 // The front-end team must add the org.json library to their project dependencies
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -9,6 +8,7 @@ import org.json.JSONObject;
 public class Game extends JFrame {
 
     private static final int BOARD_SIZE = 10;
+    private ImageIcon shipIcon;
 
     // UI Components
     private final JButton[][] board1Buttons = new JButton[BOARD_SIZE][BOARD_SIZE];
@@ -27,21 +27,37 @@ public class Game extends JFrame {
     private boolean isTwoPlayerMode = false;
 
     public Game() {
+        loadResources();
         createUserInterface();
-        // The game setup is now the very first thing the user does.
         startGameSetup();
     }
 
     private void createUserInterface() {
         setTitle("Battleship Game");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1200, 600);
+        setSize(1200, 700);
         setLocationRelativeTo(null);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.add(createTopPanel(), BorderLayout.NORTH);
         mainPanel.add(createGameBoards(), BorderLayout.CENTER);
         add(mainPanel);
+    }
+
+    private void loadResources() {
+        try {
+            URL imageUrl = getClass().getResource("/assets/ship_icon.png");
+            if (imageUrl == null) {
+                System.err.println("Error: Could not find resource file: /assets/ship_icon.png. Make sure the 'assets' folder is next to 'src'.");
+                return;
+            }
+            ImageIcon originalIcon = new ImageIcon(imageUrl);
+            Image image = originalIcon.getImage();
+            Image resizedImage = image.getScaledInstance(35, 35, Image.SCALE_SMOOTH);
+            this.shipIcon = new ImageIcon(resizedImage);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private JPanel createTopPanel() {
@@ -63,6 +79,7 @@ public class Game extends JFrame {
         JPanel boardsPanel = new JPanel(new GridLayout(1, 2, 20, 0));
         boardsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
+        // These labels are now generic and will be updated from the player's perspective
         JPanel board1Panel = createSingleBoard(board1Buttons, "Your Board", true);
         this.player1Label = (JLabel) board1Panel.getComponent(0);
         boardsPanel.add(board1Panel);
@@ -74,7 +91,7 @@ public class Game extends JFrame {
         return boardsPanel;
     }
 
-    private JPanel createSingleBoard(JButton[][] buttons, String title, boolean isPlayer1Board) {
+    private JPanel createSingleBoard(JButton[][] buttons, String title, boolean isTopBoard) {
         JPanel boardPanel = new JPanel(new BorderLayout(0, 5));
         JLabel titleLabel = new JLabel(title, SwingConstants.CENTER);
         titleLabel.setFont(new Font("Arial", Font.BOLD, 16));
@@ -91,7 +108,7 @@ public class Game extends JFrame {
 
                 final int r = row;
                 final int c = col;
-                buttons[row][col].addActionListener(e -> handleBoardClick(r, c, isPlayer1Board));
+                buttons[row][col].addActionListener(e -> handleBoardClick(r, c, isTopBoard));
                 gridPanel.add(buttons[row][col]);
             }
         }
@@ -99,7 +116,6 @@ public class Game extends JFrame {
         return boardPanel;
     }
     
-    // NEW: This is the main setup method with Create/Join logic
     private void startGameSetup() {
         String[] setupOptions = {"Create Game", "Join Game"};
         int setupChoice = JOptionPane.showOptionDialog(this, "Welcome to Battleship!", "Setup",
@@ -107,11 +123,8 @@ public class Game extends JFrame {
 
         if (setupChoice == -1) System.exit(0);
 
-        if (setupChoice == 0) { // CREATE GAME
-            createGameFlow();
-        } else { // JOIN GAME
-            joinGameFlow();
-        }
+        if (setupChoice == 0) { createGameFlow(); } 
+        else { joinGameFlow(); }
     }
 
     private void createGameFlow() {
@@ -119,7 +132,7 @@ public class Game extends JFrame {
         int modeChoice = JOptionPane.showOptionDialog(this, "Choose your game mode:", "Create Game",
             JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, modeOptions, modeOptions[0]);
 
-        if (modeChoice == -1) System.exit(0);
+        if (modeChoice == -1) { restartGame(); return; }
 
         this.isTwoPlayerMode = (modeChoice == 1);
         String mode = this.isTwoPlayerMode ? "vs_player" : "vs_bot";
@@ -128,14 +141,14 @@ public class Game extends JFrame {
         Integer numGames = (Integer) JOptionPane.showInputDialog(this, "Best of:", "Match Setup",
             JOptionPane.QUESTION_MESSAGE, null, gameCounts, gameCounts[0]);
 
-        if (numGames == null) System.exit(0);
+        if (numGames == null) { restartGame(); return; }
 
         getPlayerNames(this.isTwoPlayerMode);
 
         String[] createResponse = BattleshipConnector.createGame(mode, this.player1Name, this.player2Name, numGames);
         
         this.gameId = createResponse[0];
-        this.playerId = 0; // Creator is always Player 1
+        this.playerId = 0;
 
         if (this.gameId.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Error creating game: " + createResponse[1], "API Error", JOptionPane.ERROR_MESSAGE);
@@ -152,16 +165,14 @@ public class Game extends JFrame {
     }
 
     private void joinGameFlow() {
-        this.isTwoPlayerMode = true; // Joining implies a two-player game
+        this.isTwoPlayerMode = true;
         this.gameId = JOptionPane.showInputDialog(this, "Enter the Game ID from Player 1:", "Join Game", JOptionPane.QUESTION_MESSAGE);
 
-        if (this.gameId == null || this.gameId.trim().isEmpty()) {
-            System.exit(0);
-        }
+        if (this.gameId == null || this.gameId.trim().isEmpty()) { restartGame(); return; }
         
-        this.playerId = 1; // Joining player is always Player 2
-        this.player1Name = "Player 1"; // Will be updated from server
-        this.player2Name = "Player 2"; // Will be updated from server
+        this.playerId = 1;
+        this.player1Name = "Player 1";
+        this.player2Name = "Player 2";
 
         refreshGameState();
     }
@@ -177,14 +188,15 @@ public class Game extends JFrame {
             this.player2Name = "Bot";
         }
     }
-
+    
     private void refreshGameState() {
         String jsonResponse = BattleshipConnector.getGameState(this.gameId, this.playerId);
         updateUiFromJson(jsonResponse);
     }
 
-    private void handleBoardClick(int row, int col, boolean isPlayer1Board) {
-        if (isPlayer1Board || !this.isMyTurn) return;
+    private void handleBoardClick(int row, int col, boolean isTopBoard) {
+        if (isTopBoard || !this.isMyTurn) return;
+        
         String jsonResponse = BattleshipConnector.attack(this.gameId, this.playerId, row, col);
         updateUiFromJson(jsonResponse);
     }
@@ -195,6 +207,8 @@ public class Game extends JFrame {
         pollingTimer.setRepeats(true);
         pollingTimer.start();
     }
+
+    // In Game.java
 
     private void updateUiFromJson(String jsonResponseString) {
         try {
@@ -207,28 +221,36 @@ public class Game extends JFrame {
             }
 
             JSONObject gameState = responseJson.getJSONObject("game_state");
-
             this.isMyTurn = (gameState.getInt("current_turn") == this.playerId) && !gameState.getBoolean("game_over");
 
-            // Update local names from the authoritative source (the backend)
             this.player1Name = gameState.getString("player1_name");
             this.player2Name = gameState.getString("player2_name");
-            
-            // Update score and labels
+        
             JSONObject wins = gameState.getJSONObject("wins");
-            this.player1Label.setText(this.player1Name + " | Score: " + wins.get("0") + " | Sunk: " + gameState.getString("opponent_sinks"));
-            this.player2Label.setText(this.player2Name + " | Score: " + wins.get("1") + " | Sunk: " + gameState.getString("your_sinks"));
+            String p1Score = wins.get("0").toString();
+            String p2Score = wins.get("1").toString();
+        
+            String p1SunkCount = (this.playerId == 0) ? gameState.getString("opponent_sinks") : gameState.getString("your_sinks");
+            String p2SunkCount = (this.playerId == 0) ? gameState.getString("your_sinks") : gameState.getString("opponent_sinks");
+
+            this.player1Label.setText(this.player1Name + " | Score: " + p1Score + " | Sunk: " + p2SunkCount);
+            this.player2Label.setText(this.player2Name + " | Score: " + p2Score + " | Sunk: " + p1SunkCount);
+        
+            // FIX: The status message is now taken directly from the final game state,
+            // which will correctly say "Player X gets another turn!" or "Player Y's turn."
             this.statusLabel.setText(gameState.getString("status_message"));
 
             updateBoard(board1Buttons, gameState.getJSONArray("your_board"));
             updateBoard(board2Buttons, gameState.getJSONArray("opponent_board"));
 
+            // Check for a match winner
             if (!gameState.isNull("match_winner")) {
                 this.isMyTurn = false;
                 if(pollingTimer != null) pollingTimer.stop();
                 String winnerName = gameState.getInt("match_winner") == 0 ? this.player1Name : this.player2Name;
                 JOptionPane.showMessageDialog(this, "Match Over! Winner is " + winnerName, "Match Over", JOptionPane.INFORMATION_MESSAGE);
             } else if (isTwoPlayerMode) {
+                // Polling logic is still relevant for PvP mode
                 if (this.isMyTurn || gameState.getBoolean("game_over")) {
                     if (pollingTimer != null) pollingTimer.stop();
                 } else {
@@ -246,6 +268,8 @@ public class Game extends JFrame {
             JSONArray boardRow = boardData.getJSONArray(r);
             for (int c = 0; c < BOARD_SIZE; c++) {
                 String cell = boardRow.getString(c);
+                buttons[r][c].setIcon(null);
+                buttons[r][c].setText("");
                 switch (cell) {
                     case "S": // Your own, untouched ship
                         buttons[r][c].setBackground(Color.decode("#000000"));
